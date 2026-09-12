@@ -191,6 +191,8 @@ class RenderWorker:
                     elif len(outputs) > 1:
                         fps = float((scene_report or {}).get("fps") or 24)
                         video = renderer.build_preview_video(outputs, fps, dest, log=log_fn)
+                    log_fn("preview: movie=%s outputs=%d video=%s"
+                           % (movie or "-", len(outputs), video or "no generado"))
                     if video:
                         preview["video"] = video
                 nframes = fend - fstart + 1

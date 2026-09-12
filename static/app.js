@@ -171,9 +171,10 @@ function sceneRow(f, s) {
         '<span class="tag">' + esc(eng) + '</span>' +
         '<span class="tag">' + esc(res) + '</span>' +
         (s.camera ? '<span class="tag">cam ' + esc(s.camera) + '</span>' : '') +
-        '<span class="tag out" title="' + esc(s.filepath_abs || "") + '">→ ' + esc(out) + '</span>' +
+        '<span class="tag out' + (d.out ? ' out-own' : '') + '" data-raw="' + esc(s.filepath_raw || '') + '" data-abs="' + esc(s.filepath_abs || '') + '" title="' + esc(d.out || s.filepath_abs || '') + '">→ ' + esc(d.out || out) + '</span>' +
       '</span>' +
       '<span class="scene-actions">' +
+        '<button class="btn sm ghost" data-act="pick-out" title="Elegir carpeta de salida para esta escena">📁 Salida…</button>' +
         '<button class="btn sm ghost" data-act="toggle-ov">Overrides…</button>' +
         '<button class="btn sm primary" data-act="enqueue">+ Encolar</button>' +
       '</span>' +
@@ -209,6 +210,20 @@ function readOverrideRow(row) {
 function snapshotRow(row) {
   const key = row.dataset.file + "|" + row.dataset.scene;
   overrideDraft[key] = readOverrideRow(row);
+}
+
+function updateSceneOutTag(row) {
+  const tag = row.querySelector(".tag.out");
+  if (!tag) return;
+  const d = readOverrideRow(row);
+  const raw = tag.dataset.raw || "";
+  tag.textContent = "→ " + (d.out || raw || "(por defecto del .blend)");
+  tag.title = d.out || tag.dataset.abs || "";
+  if (d.out) {
+    tag.classList.add("out-own");
+  } else {
+    tag.classList.remove("out-own");
+  }
 }
 
 /* ============================ cola ============================ */
@@ -278,7 +293,10 @@ function summarizeOverrides(ov) {
   if (ov.samples) parts.push(ov.samples + " spp");
   if (ov.device) parts.push(ov.device);
   if (ov.resolution_percentage) parts.push(ov.resolution_percentage + "%");
-  if (ov.output_dir) parts.push("salida propia");
+  if (ov.output_dir) {
+    const tail = String(ov.output_dir).split(/[\\/]/).filter(Boolean).pop() || "salida";
+    parts.push("📁 " + tail);
+  }
   return parts.join(" · ");
 }
 
@@ -295,6 +313,9 @@ function jobCard(j) {
   } else if (j.status === "running") {
     acts.push('<button class="btn sm ghost" data-act="cancel" data-id="' + j.id + '">Cancelar</button>');
   } else {
+    if (j.status === "done") {
+      acts.push('<button class="btn sm primary" data-act="open-folder" data-id="' + j.id + '" title="Abrir la carpeta de salida en el Explorador">📂 Abrir carpeta</button>');
+    }
     acts.push('<button class="btn sm ghost" data-act="retry" data-id="' + j.id + '">Reintentar</button>');
     acts.push('<button class="btn sm ghost danger" data-act="delete" data-id="' + j.id + '">✕</button>');
   }
@@ -361,7 +382,13 @@ document.addEventListener("click", async (e) => {
       const ov = btn.closest(".scene").querySelector(".overrides");
       ov.classList.toggle("hidden");
     }
-    else if (act === "pick-out") openFs("pick-dir", btn.closest(".scene").querySelector(".ov-out"));
+    else if (act === "pick-out") {
+      const row = btn.closest(".scene");
+      const input = row.querySelector(".ov-out");
+      const tag = row.querySelector(".tag.out");
+      const abs = (input && input.value) || (tag ? tag.dataset.abs : "") || "";
+      openFs("pick-dir", input, abs ? abs.replace(/[\\/][^\\/]*$/, "") : "");
+    }
     else if (act === "inspect") { await api("/api/files/" + btn.dataset.id + "/inspect", { method: "POST" }); toast("Re-inspeccionando…"); }
     else if (act === "remove-file") {
       if (confirm("¿Quitar este archivo de la lista? (no se borra del disco)")) {
@@ -393,7 +420,10 @@ document.addEventListener("click", async (e) => {
 
 document.addEventListener("input", (e) => {
   const row = e.target.closest(".scene");
-  if (row && e.target.matches("input, select")) snapshotRow(row);
+  if (row && e.target.matches("input, select")) {
+    snapshotRow(row);
+    if (e.target.matches(".ov-out")) updateSceneOutTag(row);
+  }
 });
 
 async function enqueueScene(row) {
@@ -490,9 +520,10 @@ function uploadFiles(fl) {
 /* ============================ explorador de archivos ============================ */
 const fs = { mode: "add", selected: new Set(), path: "", targetInput: null };
 
-async function openFs(mode, targetInput = null) {
+async function openFs(mode, targetInput = null, startPath = "") {
   fs.mode = mode;
   fs.targetInput = targetInput || null;
+  if (startPath) fs.path = startPath;
   fs.selected = new Set();
   $("#fsTitle").textContent = mode === "pick-dir" ? "Elegir carpeta de salida" : "Seleccionar archivos .blend";
   $("#fsHint").textContent = mode === "pick-dir"
@@ -501,7 +532,7 @@ async function openFs(mode, targetInput = null) {
   $("#fsPickDir").textContent = mode === "pick-dir" ? "Usar esta carpeta" : "Agregar todos los .blend de esta carpeta";
   $("#fsAdd").classList.toggle("hidden", mode === "pick-dir");
   $("#fsModal").classList.remove("hidden");
-  await fsGo(targetInput ? fs.path : "");
+  await fsGo(mode === "pick-dir" ? (fs.path || "") : "");
 }
 
 async function fsGo(path) {
@@ -554,7 +585,10 @@ $("#fsPickDir").addEventListener("click", async () => {
     if (fs.targetInput) {
       fs.targetInput.value = fs.path;
       const row = fs.targetInput.closest(".scene");
-      if (row) snapshotRow(row);
+      if (row) {
+        snapshotRow(row);
+        updateSceneOutTag(row);
+      }
     }
     closeModal("fsModal");
     return;

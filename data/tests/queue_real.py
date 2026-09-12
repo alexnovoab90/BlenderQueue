@@ -1,11 +1,22 @@
-"""Encola un render corto del archivo real (película MKV) para validar el flujo completo."""
+"""Encola un render de prueba en BlendQueue vía API.
+
+Uso:
+    python queue_real.py [nombre.blend] [frame_ini] [frame_fin] [subcarpeta_salida]
+    Por defecto: 3.2_Bolas_Animacion.blend 0 4 real
+"""
 import json
 import sys
 import time
 import urllib.request
 
 BASE = "http://127.0.0.1:8777"
-NAME = "3.2_Bolas_Animacion.blend"
+TESTS = "C:/Users/Alex/Developer/blendqueue/data/tests"
+
+NAME = sys.argv[1] if len(sys.argv) > 1 else "3.2_Bolas_Animacion.blend"
+F0 = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+F1 = int(sys.argv[3]) if len(sys.argv) > 3 else 4
+SUB = sys.argv[4] if len(sys.argv) > 4 else "real"
+OUT = TESTS + "/renders/" + SUB
 
 
 def req(method, path, body=None, timeout=120):
@@ -19,20 +30,20 @@ def req(method, path, body=None, timeout=120):
 st = req("GET", "/api/state")
 f = next((x for x in st["files"] if x["name"] == NAME and x["status"] == "ready"), None)
 if not f:
-    print("El archivo real no está listo todavía. files:")
+    print("El archivo no está listo todavía. files:")
     for x in st["files"]:
         print("  -", x["name"], "|", x["status"])
     sys.exit(1)
 
-fstart, fend = 0, 4
-body = {"file_id": f["id"], "scene": "Scene", "frames": {"start": fstart, "end": fend},
-        "overrides": {"output_dir": "C:/Users/Alex/Developer/blendqueue/data/tests/renders/real"}}
+scene = f["report"]["scenes"][0]["name"]
+body = {"file_id": f["id"], "scene": scene, "frames": {"start": F0, "end": F1},
+        "overrides": {"output_dir": OUT}}
 r = req("POST", "/api/jobs", body)
 jid = r["job"]["id"]
-print("job encolado:", jid, "| frames", fstart, "-", fend)
+print("job:", jid, "|", NAME, "| escena:", scene, "| frames", F0, "-", F1, "->", OUT)
 
 t0, last = time.time(), None
-while time.time() - t0 < 1500:
+while time.time() - t0 < 2400:
     st = req("GET", "/api/state")
     j = next((x for x in st["jobs"] if x["id"] == jid), None)
     if not j:
@@ -44,16 +55,12 @@ while time.time() - t0 < 1500:
         print("   ", line, flush=True)
         last = line
     if j["status"] in ("done", "error", "canceled"):
-        print("outputs:", json.dumps(j.get("outputs"), ensure_ascii=False, indent=1))
-        print("preview:", json.dumps(j.get("preview"), ensure_ascii=False))
+        print("duración:", j.get("duration_s"), "s | outputs:", len(j.get("outputs") or []))
+        for p2 in (j.get("outputs") or [])[:4]:
+            print("   ·", p2)
+        print("preview:", (j.get("preview") or {}).get("video"))
         print("error:", j.get("error"))
-        try:
-            log = req("GET", "/api/jobs/" + jid + "/log?tail=50")["log"]
-            print("--- log (cola):")
-            print(log[-2200:])
-        except Exception as exc:
-            print("no log:", exc)
         break
-    time.sleep(3)
+    time.sleep(2)
 else:
     print("TIMEOUT esperando el job")

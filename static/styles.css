@@ -202,6 +202,7 @@ code { background: #10141b; border: 1px solid var(--border); border-radius: 5px;
   white-space: nowrap;
 }
 .tag.out { color: #9fbfe8; }
+.tag.out-own { color: var(--accent); border-color: #6c5514; background: #221c0c; font-weight: 600; }
 .scene-actions { display: flex; gap: 6px; margin-left: auto; }
 
 .overrides {
