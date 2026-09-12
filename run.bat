@@ -25,6 +25,6 @@ start "" http://127.0.0.1:8777/
 exit /b 0
 
 :serve
-echo [BlendQueue] Iniciando en http://127.0.0.1:8777/  (cierra esta ventana para detener la cola)
+echo [BlendQueue] Iniciando en http://127.0.0.1:8777/  (detener: boton Cerrar en la app, o cerrar esta ventana)
 ".venv\Scripts\python.exe" server.py
-pause
+if errorlevel 1 pause

@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BlendQueue — cola local de renders Blender</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=2">
+  <link rel="stylesheet" href="/static/styles.css?v=3">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="logo">▣</span>
+      <img class="logo-img" src="/static/blender-logo.webp" alt="Blender">
       <div class="brand-text">
         <h1>BlendQueue</h1>
         <span class="tagline">cola local de renders · Blender headless</span>
@@ -20,6 +20,7 @@
       <span id="blenderBadge" class="badge">Blender: …</span>
       <button id="btnPause" class="btn">Pausar cola</button>
       <button id="btnSettings" class="btn ghost">Ajustes</button>
+      <button id="btnShutdown" class="btn danger" title="Detener BlendQueue y cerrar la ventana del servidor">⏻ Cerrar</button>
     </div>
   </header>
 
@@ -132,6 +133,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2"></script>
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>

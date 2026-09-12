@@ -669,4 +669,10 @@ $("#btnPause").addEventListener("click", async () => {
   catch (err) { toast(String(err.message || err), "error"); }
 });
 
+$("#btnShutdown").addEventListener("click", async () => {
+  if (!confirm("¿Cerrar BlendQueue?\nSe detiene la cola y se apaga el servidor (la ventana se cierra).")) return;
+  try { await api("/api/shutdown", { method: "POST" }); } catch (e) { }
+  toast("BlendQueue se está cerrando… ya puedes cerrar esta pestaña.", "warn", 12000);
+});
+
 setupDropzone();

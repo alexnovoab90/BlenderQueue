@@ -442,8 +442,35 @@ def api_queue_pause(body: PauseBody):
     return worker.status()
 
 
+@app.post("/api/shutdown")
+def api_shutdown():
+    """Detiene la cola (mata el render en curso) y apaga el servidor."""
+    try:
+        if worker and worker.current_job_id:
+            worker.cancel(worker.current_job_id)
+    except Exception:
+        pass
+
+    def _stop():
+        time.sleep(0.8)
+        try:
+            if _server_handle is not None:
+                _server_handle.should_exit = True
+        except Exception:
+            pass
+        time.sleep(3.0)
+        os._exit(0)  # último recurso si el apagado limpio no terminó
+
+    threading.Thread(target=_stop, daemon=True).start()
+    return {"ok": True, "message": "BlendQueue se está apagando…"}
+
+
 # ---------------------------------------------------------------- entrada
+_server_handle = None
+
+
 def main():
+    global _server_handle
     parser = argparse.ArgumentParser(description="BlendQueue — cola local de renders Blender")
     parser.add_argument("--port", type=int, default=config.DEFAULT_PORT)
     parser.add_argument("--no-browser", action="store_true")
@@ -453,7 +480,9 @@ def main():
     if not args.no_browser:
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="info")
+    _server_handle = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=args.port,
+                                                   log_level="info"))
+    _server_handle.run()
 
 
 if __name__ == "__main__":
