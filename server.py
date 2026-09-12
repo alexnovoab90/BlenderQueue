@@ -52,7 +52,8 @@ app = FastAPI(title="BlendQueue", lifespan=lifespan)
 # ---------------------------------------------------------------- estáticos
 @app.get("/")
 def index():
-    return FileResponse(str(config.STATIC_DIR / "index.html"))
+    return FileResponse(str(config.STATIC_DIR / "index.html"),
+                        headers={"Cache-Control": "no-store, must-revalidate"})
 
 
 app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR)), name="static")
@@ -310,19 +311,20 @@ def api_job_open(jid: str):
     if not job:
         raise HTTPException(404, "Trabajo no encontrado")
     files = [f for f in _job_frame_files(job) if f["exists"]]
+    target_dir = None
     if files:
-        p = files[0]["path"]
-        try:
-            subprocess.Popen(f'explorer /select,"{p}"', shell=True,
-                             creationflags=config.CREATE_NO_WINDOW)
-            return {"ok": True, "path": p}
-        except Exception as exc:
-            raise HTTPException(500, str(exc))
-    ov_dir = (job.get("overrides") or {}).get("output_dir")
-    if ov_dir and os.path.isdir(ov_dir):
-        os.startfile(ov_dir)
-        return {"ok": True, "path": ov_dir}
-    raise HTTPException(404, "Sin carpeta de salida disponible")
+        target_dir = os.path.dirname(files[0]["path"])
+    if not target_dir:
+        ov_dir = (job.get("overrides") or {}).get("output_dir")
+        if ov_dir and os.path.isdir(ov_dir):
+            target_dir = ov_dir
+    if not target_dir or not os.path.isdir(target_dir):
+        raise HTTPException(404, "Sin carpeta de salida disponible")
+    try:
+        os.startfile(target_dir)
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
+    return {"ok": True, "path": target_dir}
 
 
 # ---------------------------------------------------------------- abrir rutas
@@ -339,8 +341,7 @@ def api_open(body: OpenBody):
         if os.path.isdir(p):
             os.startfile(p)  # noqa: S606 (app local)
         else:
-            subprocess.Popen(f'explorer /select,"{p}"', shell=True,
-                             creationflags=config.CREATE_NO_WINDOW)
+            os.startfile(os.path.dirname(p) or p)
     except Exception as exc:
         raise HTTPException(500, str(exc))
     return {"ok": True}
