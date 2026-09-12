@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BlendQueue — cola local de renders Blender</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">▣</span>
+      <div class="brand-text">
+        <h1>BlendQueue</h1>
+        <span class="tagline">cola local de renders · Blender headless</span>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span id="blenderBadge" class="badge">Blender: …</span>
+      <button id="btnPause" class="btn">Pausar cola</button>
+      <button id="btnSettings" class="btn ghost">Ajustes</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel" id="addPanel">
+      <div class="dropzone" id="dropzone">
+        <div class="dz-line"><strong>Arrastra aquí tus .blend</strong> o
+          <button class="btn sm" id="btnBrowseFiles">elegir archivos…</button>
+        </div>
+        <div class="dz-line">
+          <button class="btn sm ghost" id="btnBrowse">Seleccionar ruta del equipo…</button>
+          <span class="muted">se renderiza en su lugar, sin copiar</span>
+        </div>
+        <div class="dz-note muted">Por ruta se conservan las texturas relativas del .blend.
+          Al arrastrar, el archivo se copia a <code>data/uploads</code>. También puedes registrar
+          una carpeta completa con .blend y se agregarán todos.</div>
+        <div id="uploadStatus" class="muted"></div>
+      </div>
+      <input type="file" id="fileInput" multiple accept=".blend" hidden>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Archivos</h2>
+        <span class="muted" id="filesCount"></span>
+      </div>
+      <div id="filesList" class="files"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Cola de renders</h2>
+        <span class="muted" id="queueSummary"></span>
+      </div>
+      <div id="queueList" class="queue"></div>
+    </section>
+  </main>
+
+  <div id="toasts"></div>
+
+  <!-- Modal: explorador de archivos / carpetas -->
+  <div class="modal hidden" id="fsModal">
+    <div class="modal-box wide">
+      <div class="modal-head">
+        <h3 id="fsTitle">Seleccionar archivos .blend</h3>
+        <button class="x" data-close="fsModal">✕</button>
+      </div>
+      <div class="fs-bar">
+        <button class="btn sm" id="fsUp">↑ Subir</button>
+        <input class="input grow" id="fsPath" placeholder="Escribe una ruta (ej. G:\Unidades compartidas\...) y presiona Ir">
+        <button class="btn sm" id="fsGo">Ir</button>
+      </div>
+      <div class="fs-list" id="fsList"></div>
+      <div class="modal-foot">
+        <span class="muted" id="fsHint">Navega y marca los .blend que quieras agregar.</span>
+        <div class="foot-actions">
+          <button class="btn ghost" id="fsPickDir">Usar esta carpeta</button>
+          <button class="btn primary" id="fsAdd">Agregar seleccionados</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: ajustes -->
+  <div class="modal hidden" id="settingsModal">
+    <div class="modal-box">
+      <div class="modal-head"><h3>Ajustes</h3><button class="x" data-close="settingsModal">✕</button></div>
+      <div class="settings">
+        <label class="field">
+          <span>Ruta de blender.exe</span>
+          <div class="row">
+            <input class="input grow" id="setBlender" placeholder="D:\...\blender.exe">
+            <button class="btn sm" id="setBlenderCheck">Verificar</button>
+          </div>
+          <span class="muted" id="setBlenderStatus"></span>
+        </label>
+        <label class="check"><input type="checkbox" id="setNotif"> Notificación de escritorio al terminar cada render</label>
+        <label class="check"><input type="checkbox" id="setPreview"> Generar video MP4 de preview de cada secuencia</label>
+        <div class="muted small">La salida de cada trabajo se define por escena: por defecto se respeta la carpeta
+          guardada en el .blend; puedes cambiarla en los overrides de cada escena.</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" id="setNotifyTest">Probar notificación</button>
+        <button class="btn primary" id="setSave">Guardar ajustes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: log -->
+  <div class="modal hidden" id="logModal">
+    <div class="modal-box wide">
+      <div class="modal-head"><h3>Log del trabajo</h3><button class="x" data-close="logModal">✕</button></div>
+      <pre id="logContent" class="log"></pre>
+    </div>
+  </div>
+
+  <!-- Modal: visor de frames -->
+  <div class="modal hidden" id="frameModal">
+    <div class="modal-box wide frame-box">
+      <div class="modal-head">
+        <h3 id="frameLabel">Frame</h3>
+        <button class="x" data-close="frameModal">✕</button>
+      </div>
+      <div class="frame-nav">
+        <button class="btn sm" id="framePrev">←</button>
+        <button class="btn sm" id="frameNext">→</button>
+        <span class="muted" id="frameInfo"></span>
+      </div>
+      <img id="frameImg" alt="frame">
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
