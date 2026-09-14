@@ -30,7 +30,7 @@ class Store:
     def __init__(self, path: str | None = None):
         self._path = str(path or config.STATE_FILE)
         self._lock = threading.RLock()
-        self._data = {"settings": dict(DEFAULT_SETTINGS), "files": [], "jobs": []}
+        self._data = {"settings": dict(DEFAULT_SETTINGS), "files": [], "jobs": [], "caps": {}}
         self.load()
 
     # ---------------- persistencia ----------------
@@ -46,6 +46,8 @@ class Store:
                         self._data["files"] = data["files"]
                     if isinstance(data.get("jobs"), list):
                         self._data["jobs"] = data["jobs"]
+                    if isinstance(data.get("caps"), dict):
+                        self._data["caps"] = data["caps"]
             except Exception:
                 pass  # estado corrupto: se parte de cero (los logs quedan en data/logs)
             self._recover()
@@ -79,6 +81,20 @@ class Store:
     def settings(self) -> dict:
         with self._lock:
             return dict(self._data["settings"])
+
+    def caps(self) -> dict:
+        """Formatos/enums que soporta el Blender detectado (última inspección OK)."""
+        with self._lock:
+            return copy.deepcopy(self._data.get("caps") or {})
+
+    def set_caps(self, caps: dict | None) -> None:
+        if not isinstance(caps, dict) or not caps.get("file_format"):
+            return
+        with self._lock:
+            if self._data.get("caps") == caps:
+                return
+            self._data["caps"] = caps
+            self.save()
 
     def files(self) -> list:
         with self._lock:
@@ -180,17 +196,27 @@ class Store:
                 return True
         return False
 
-    def move_job(self, jid: str, direction: int) -> None:
-        """Mueve un trabajo encolado una posición arriba (-1) o abajo (+1) entre vecinos encolados."""
+    def move_job(self, jid: str, direction: int) -> bool:
+        """Mueve un trabajo encolado una posición arriba (-1) o abajo (+1).
+
+        Salta los trabajos que ya no están en cola (listos, con error…), que
+        pueden quedar intercalados: lo que importa es el orden relativo entre
+        los encolados, que es el que consume el worker.
+        """
         with self._lock:
             jobs = self._data["jobs"]
             idx = next((i for i, j in enumerate(jobs) if j.get("id") == jid), None)
             if idx is None or jobs[idx].get("status") != "queued":
-                return
-            k = idx + (1 if direction > 0 else -1)
-            if 0 <= k < len(jobs) and jobs[k].get("status") == "queued":
-                jobs[idx], jobs[k] = jobs[k], jobs[idx]
-                self.save()
+                return False
+            step = 1 if direction > 0 else -1
+            k = idx + step
+            while 0 <= k < len(jobs) and jobs[k].get("status") != "queued":
+                k += step
+            if not (0 <= k < len(jobs)):
+                return False
+            jobs[idx], jobs[k] = jobs[k], jobs[idx]
+            self.save()
+            return True
 
     def next_queued_job(self):
         with self._lock:

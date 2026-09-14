@@ -1,4 +1,4 @@
-fastapi
-uvicorn
-python-multipart
-winotify
+fastapi>=0.110
+uvicorn>=0.27
+python-multipart>=0.0.9
+winotify>=1.1; sys_platform == "win32"

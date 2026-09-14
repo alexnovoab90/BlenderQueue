@@ -366,6 +366,39 @@ code { background: #10141b; border: 1px solid var(--border); border-radius: 5px;
 }
 .frame-nav { display: flex; align-items: center; gap: 10px; padding: 10px 16px 6px; }
 
+/* ---------- formato de salida ---------- */
+.head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.fmt-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #10141b;
+}
+.overrides .fmt-fields { margin-top: 4px; }
+.overrides .fmt-fields::before {
+  content: "Formato de salida";
+  flex-basis: 100%;
+  font-size: 11px;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fmt-opt { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+.fmt-opt > span { white-space: nowrap; }
+.fmt-opt select.input { max-width: 200px; }
+
+.tag.fmt { color: #9fbfe8; }
+.chip.fmt { color: #9fbfe8; border-color: #26364d; }
+.chip.fmt.own { color: var(--accent); border-color: #6c5514; background: #221c0c; font-weight: 600; }
+.chip.warn { color: var(--accent); border-color: #6c5514; background: #221c0c; }
+
 .logo-img {
   height: 30px;
   width: auto;

@@ -34,20 +34,29 @@ class RenderWorker:
         job = self.store.get_job(job_id)
         if not job:
             return
-        if job.get("status") == "queued":
+        status = job.get("status")
+        if status == "queued":
             self.store.update_job(job_id, status="canceled", finished_at=time.time(),
                                   error="Cancelado antes de iniciar")
-        else:
+        elif status == "running":
+            # Solo se marca para cancelar lo que está corriendo: hacerlo con un
+            # trabajo ya terminado dejaba la marca pegada y el siguiente
+            # reintento terminaba como "cancelado" aunque hubiera renderizado.
             self._cancel_ids.add(job_id)
             with self._lock:
                 if self.current_job_id == job_id and self._proc is not None:
                     self._kill(self._proc)
         self.on_update()
 
-    def retry(self, job_id: str) -> None:
+    def retry(self, job_id: str) -> bool:
+        job = self.store.get_job(job_id)
+        if not job or job.get("status") == "running":
+            return False
+        self._cancel_ids.discard(job_id)
         self.store.update_job(job_id, status="queued", error=None, progress={}, outputs=[],
                               preview={}, started_at=None, finished_at=None, duration_s=None)
         self.on_update()
+        return True
 
     def remove(self, job_id: str) -> None:
         job = self.store.get_job(job_id)
@@ -183,16 +192,22 @@ class RenderWorker:
                 if settings.get("preview_video", True):
                     dest = str(config.PREVIEWS_DIR / f"{jid}.mp4")
                     log_fn = lambda msg: self._append_log(log_path, msg)
+                    blocked = renderer.preview_block_reason(
+                        renderer.effective_format(job, scene_report))
                     video = None
                     movie = next((p for p in outputs if os.path.splitext(p)[1].lower()
                                   in renderer.VIDEO_EXTS and os.path.exists(p)), None)
-                    if movie:
+                    if blocked and not movie:
+                        preview["note"] = blocked
+                        log_fn("preview omitido: " + blocked)
+                    elif movie:
                         video = renderer.remux_preview(movie, dest, log=log_fn)
                     elif len(outputs) > 1:
                         fps = float((scene_report or {}).get("fps") or 24)
                         video = renderer.build_preview_video(outputs, fps, dest, log=log_fn)
-                    log_fn("preview: movie=%s outputs=%d video=%s"
-                           % (movie or "-", len(outputs), video or "no generado"))
+                    if not blocked or movie:
+                        log_fn("preview: movie=%s outputs=%d video=%s"
+                               % (movie or "-", len(outputs), video or "no generado"))
                     if video:
                         preview["video"] = video
                 nframes = fend - fstart + 1
@@ -258,8 +273,14 @@ class RenderWorker:
 
     @staticmethod
     def _scan_outputs(job: dict, scene_report: dict | None, started: float) -> list:
+        """Salidas del render cuando Blender no las anunció con 'Saved:' (video).
+
+        Se limita a archivos escritos durante este trabajo y, cuando se conoce,
+        a la extensión y al prefijo que le corresponden.
+        """
         ov = job.get("overrides") or {}
         out_dir = (ov.get("output_dir") or "").strip()
+        stem = renderer.output_stem(job).lower() if out_dir else None
         if not out_dir:
             raw = ((scene_report or {}).get("filepath_raw") or "").strip()
             if not raw:
@@ -267,9 +288,15 @@ class RenderWorker:
             resolved = renderer.resolve_relative(raw, job["file_path"])
             out_dir = resolved if resolved.endswith(("\\", "/")) else os.path.dirname(resolved)
         out_dir = os.path.abspath(out_dir)
+        ext = (renderer.expected_extension(job, scene_report) or "").lower()
         results = []
         try:
             for name in os.listdir(out_dir):
+                low = name.lower()
+                if ext and not low.endswith(ext):
+                    continue
+                if stem and not low.startswith(stem):
+                    continue
                 p = os.path.join(out_dir, name)
                 try:
                     if os.path.isfile(p) and os.path.getmtime(p) >= started - 5:

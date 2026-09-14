@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BlendQueue — cola local de renders Blender</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=3">
+  <link rel="stylesheet" href="/static/styles.css?v=4">
 </head>
 <body>
   <header class="topbar">
@@ -53,7 +53,11 @@
     <section class="panel">
       <div class="panel-head">
         <h2>Cola de renders</h2>
-        <span class="muted" id="queueSummary"></span>
+        <div class="head-right">
+          <span class="muted" id="queueSummary"></span>
+          <span id="queueFormatWarn" class="chip warn hidden"></span>
+          <button class="btn sm ghost" id="btnQueueFormat" title="Cambiar el formato de salida de los trabajos en cola">Formato de salida…</button>
+        </div>
       </div>
       <div id="queueList" class="queue"></div>
     </section>
@@ -109,6 +113,29 @@
     </div>
   </div>
 
+  <!-- Modal: formato de salida (por trabajo o para toda la cola) -->
+  <div class="modal hidden" id="fmtModal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 id="fmtTitle">Formato de salida</h3>
+        <button class="x" data-close="fmtModal">✕</button>
+      </div>
+      <div class="settings">
+        <div class="muted small" id="fmtScope"></div>
+        <div id="fmtFields" class="fmt-fields"></div>
+        <div class="muted small">Se aplica al renderizar, sobre una copia en memoria: el archivo
+          .blend nunca se modifica. Con «(el del archivo)» se respeta lo que trae cada escena.</div>
+      </div>
+      <div class="modal-foot">
+        <span class="muted small" id="fmtPreview"></span>
+        <div class="foot-actions">
+          <button class="btn ghost" data-close="fmtModal">Cancelar</button>
+          <button class="btn primary" id="fmtApply">Aplicar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: log -->
   <div class="modal hidden" id="logModal">
     <div class="modal-box wide">
@@ -133,6 +160,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=3"></script>
+  <script src="/static/app.js?v=4"></script>
 </body>
 </html>

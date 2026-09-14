@@ -5,8 +5,9 @@ Este script corre DENTRO de Blender, no en el servidor:
     blender.exe -b "archivo.blend" --python inspect_blend.py -- "salida.json"
 
 Escribe un JSON con la información de cada escena (rango de frames, resolución,
-motor, samples, cámara y salida) más el chequeo de dependencias externas
-(texturas, bibliotecas) que puedan faltar.
+motor, samples, cámara, formato y salida) más el chequeo de dependencias
+externas (texturas, bibliotecas) que puedan faltar y los formatos de salida
+que soporta esta instalación de Blender ("capabilities").
 """
 import json
 import os
@@ -43,6 +44,76 @@ def _exists(p):
         return False
 
 
+def _enum_items(rna_struct, prop_name):
+    """Ítems de un enum leídos del RNA del tipo (lista completa, no filtrada)."""
+    out, seen = [], set()
+    try:
+        prop = rna_struct.bl_rna.properties[prop_name]
+    except Exception:
+        return out
+    for attr in ("enum_items_static", "enum_items"):
+        try:
+            items = list(getattr(prop, attr, None) or [])
+        except Exception:
+            items = []
+        for it in items:
+            if it.identifier in seen:
+                continue
+            seen.add(it.identifier)
+            out.append({"id": it.identifier, "name": it.name})
+    return out
+
+
+def _capabilities():
+    """Formatos de salida que ofrece esta instalación (para la UI de BlendQueue)."""
+    caps = {"blender_version": bpy.app.version_string}
+    try:
+        ims = bpy.types.ImageFormatSettings
+        for prop in ("file_format", "media_type", "color_mode", "color_depth", "exr_codec"):
+            items = _enum_items(ims, prop)
+            if items:
+                caps[prop] = items
+    except Exception as exc:
+        caps["error"] = repr(exc)
+    try:
+        ff = bpy.types.FFmpegSettings
+        for prop, key in (("format", "ffmpeg_format"), ("codec", "ffmpeg_codec")):
+            items = _enum_items(ff, prop)
+            if items:
+                caps[key] = items
+    except Exception:
+        pass
+    return caps
+
+
+def _format_info(r):
+    """Ajustes de salida de una escena (image_settings + ffmpeg)."""
+    ims = r.image_settings
+    fmt = ims.file_format
+    info = {
+        "file_format": fmt,
+        "is_movie": fmt in MOVIE_FORMATS,
+        "media_type": getattr(ims, "media_type", None),
+        "color_mode": getattr(ims, "color_mode", None),
+        "color_depth": getattr(ims, "color_depth", None),
+        "use_file_extension": bool(getattr(r, "use_file_extension", True)),
+    }
+    for attr in ("quality", "compression"):
+        try:
+            info[attr] = int(getattr(ims, attr))
+        except Exception:
+            pass
+    if fmt in ("OPEN_EXR", "OPEN_EXR_MULTILAYER"):
+        info["exr_codec"] = getattr(ims, "exr_codec", None)
+    if fmt == "FFMPEG":
+        try:
+            info["ffmpeg_container"] = r.ffmpeg.format
+            info["ffmpeg_codec"] = r.ffmpeg.codec
+        except Exception:
+            pass
+    return info
+
+
 def _scene_info(sc):
     r = sc.render
     fps = 0.0
@@ -66,11 +137,14 @@ def _scene_info(sc):
         "resolution_y": int(r.resolution_y * r.resolution_percentage / 100),
         "engine": r.engine,
         "camera": sc.camera.name if sc.camera else None,
-        "file_format": r.image_settings.file_format,
-        "is_movie": r.image_settings.file_format in MOVIE_FORMATS,
         "filepath_raw": r.filepath,
         "filepath_abs": _abs(r.filepath) if r.filepath else None,
     }
+    try:
+        info.update(_format_info(r))
+    except Exception as exc:
+        info["file_format"] = None
+        info["format_error"] = repr(exc)
     if r.engine == "CYCLES":
         try:
             cy = sc.cycles
@@ -93,6 +167,7 @@ def build_report():
         "blend_filepath": bpy.data.filepath,
         "saved_with": ".".join(str(v) for v in getattr(bpy.data, "version", ())),
         "blender_version": bpy.app.version_string,
+        "capabilities": _capabilities(),
         "scenes": [],
         "counts": {
             "scenes": len(bpy.data.scenes),

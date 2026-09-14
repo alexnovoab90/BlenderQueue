@@ -13,12 +13,14 @@ import time
 import webbrowser
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile
-from fastapi.responses import FileResponse
+from urllib.parse import urlparse
+
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File as FastAPIFile
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import config, notifier
+from core import config, formats, notifier
 from core.inspector import InspectorLane
 from core.store import Store
 from core.worker import RenderWorker
@@ -48,6 +50,24 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="BlendQueue", lifespan=lifespan)
 
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+
+
+@app.middleware("http")
+async def only_local(request: Request, call_next):
+    """BlendQueue abre el disco local (listar carpetas, abrir el Explorador,
+    lanzar Blender). El servidor solo escucha en 127.0.0.1, pero eso no impide
+    que otra página del navegador le mande peticiones: se exige que el Host y
+    el Origin sean locales antes de aceptar algo que cambie estado."""
+    host = (request.headers.get("host") or "").rsplit(":", 1)[0]
+    if host and host not in LOCAL_HOSTS:
+        return JSONResponse({"detail": "Solo se aceptan conexiones locales"}, status_code=403)
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origin = request.headers.get("origin")
+        if origin and (urlparse(origin).hostname or "") not in LOCAL_HOSTS:
+            return JSONResponse({"detail": "Origen no permitido"}, status_code=403)
+    return await call_next(request)
+
 
 # ---------------------------------------------------------------- estáticos
 @app.get("/")
@@ -74,6 +94,7 @@ def api_state():
     for f in snap["files"]:
         f["jobs_summary"] = summary.get(
             f["id"], {"queued": 0, "running": 0, "done": 0, "error": 0, "canceled": 0})
+    caps = snap.get("caps") or {}
     return {
         "blender": binfo,
         "settings": settings,
@@ -83,8 +104,17 @@ def api_state():
         "jobs": snap["jobs"],
         "log_tail": worker.tail(),
         "ffmpeg": bool(config.ffmpeg_path()),
+        # La UI descarga el catálogo de formatos aparte y solo lo vuelve a pedir
+        # cuando esta clave cambia (otra versión de Blender, otra instalación).
+        "formats_key": str(caps.get("blender_version") or "") + ":" + str(len(caps.get("file_format") or [])),
         "now": time.time(),
     }
+
+
+@app.get("/api/formats")
+def api_formats():
+    """Formatos de salida que ofrece la UI, según lo que soporta este Blender."""
+    return formats.catalog(store.caps())
 
 
 # ---------------------------------------------------------------- archivos
@@ -167,46 +197,137 @@ class JobBody(BaseModel):
     overrides: dict | None = None
 
 
+def _clean_overrides(raw: dict | None) -> dict:
+    """Valida los overrides que llegan de la UI y descarta lo que no aplica."""
+    ov = dict(raw or {})
+    out: dict = {}
+    engine = str(ov.get("engine") or "").strip().upper()
+    if engine:
+        out["engine"] = engine
+    device = str(ov.get("device") or "").strip().upper()
+    if device in ("GPU", "CPU"):
+        out["device"] = device
+    for key, lo, hi in (("samples", 1, 1_000_000), ("resolution_percentage", 1, 400)):
+        val = ov.get(key)
+        if val in (None, ""):
+            continue
+        try:
+            val = int(val)
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"Valor inválido para {key}")
+        if lo <= val <= hi:
+            out[key] = val
+    out_dir = str(ov.get("output_dir") or "").strip().strip('"')
+    if out_dir:
+        out["output_dir"] = out_dir
+    for key in formats.FORMAT_KEYS:
+        if ov.get(key) not in (None, ""):
+            out[key] = ov[key]
+    return formats.normalize(out)
+
+
+def _clean_frames(raw: dict | None, scene: dict | None) -> dict:
+    fr_in = raw or {}
+    scene = scene or {}
+    try:
+        start = int(fr_in["start"]) if fr_in.get("start") not in (None, "") else int(scene.get("frame_start") or 1)
+        end = int(fr_in["end"]) if fr_in.get("end") not in (None, "") else int(scene.get("frame_end") or start)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Rango de frames inválido")
+    if end < start:
+        raise HTTPException(400, f"Rango de frames inválido: {start}–{end}")
+    return {"start": start, "end": end}
+
+
+def _scene_of(frec: dict, name: str) -> dict:
+    for s in (frec.get("report") or {}).get("scenes", []):
+        if s.get("name") == name:
+            return s
+    raise HTTPException(400, "Escena no encontrada en el reporte. Re-inspecciona el archivo.")
+
+
 @app.post("/api/jobs")
 def api_job_add(body: JobBody):
     frec = store.get_file(body.file_id)
     if not frec:
         raise HTTPException(404, "Archivo no encontrado")
-    scene = None
-    for s in (frec.get("report") or {}).get("scenes", []):
-        if s.get("name") == body.scene:
-            scene = s
-            break
-    if scene is None:
-        raise HTTPException(400, "Escena no encontrada en el reporte. Re-inspecciona el archivo.")
-
-    ov = dict(body.overrides or {})
-    for k in list(ov.keys()):
-        v = ov[k]
-        if v in (None, "", 0):
-            ov.pop(k)
-            continue
-        if k in ("samples", "resolution_percentage"):
-            try:
-                ov[k] = int(v)
-            except (TypeError, ValueError):
-                ov.pop(k)
-    fr_in = body.frames or {}
-    try:
-        fstart = int(fr_in["start"]) if fr_in.get("start") is not None else int(scene.get("frame_start") or 1)
-        fend = int(fr_in["end"]) if fr_in.get("end") is not None else int(scene.get("frame_end") or fstart)
-    except (TypeError, ValueError):
-        raise HTTPException(400, "Rango de frames inválido")
-
+    scene = _scene_of(frec, body.scene)
     job = {
         "file_id": body.file_id,
         "file_path": frec["path"],
         "file_name": frec["name"],
         "scene": body.scene,
-        "frames": {"start": fstart, "end": fend},
-        "overrides": ov,
+        "frames": _clean_frames(body.frames, scene),
+        "overrides": _clean_overrides(body.overrides),
+        # Formato guardado en el .blend: permite mostrar el formato efectivo de
+        # cada trabajo en la cola y detectar colas con formatos mezclados.
+        "scene_format": scene.get("file_format"),
+        "scene_container": scene.get("ffmpeg_container"),
     }
     return {"job": store.add_job(job)}
+
+
+class JobPatchBody(BaseModel):
+    frames: dict | None = None
+    overrides: dict | None = None
+
+
+@app.patch("/api/jobs/{jid}")
+def api_job_patch(jid: str, body: JobPatchBody):
+    """Edita un trabajo que aún está en cola (formato, salida, frames…)."""
+    job = store.get_job(jid)
+    if not job:
+        raise HTTPException(404, "Trabajo no encontrado")
+    if job.get("status") != "queued":
+        raise HTTPException(409, "Solo se pueden editar trabajos que siguen en cola")
+    fields = {}
+    if body.overrides is not None:
+        fields["overrides"] = _clean_overrides(body.overrides)
+    if body.frames is not None:
+        frec = store.get_file(job.get("file_id") or "") or {}
+        scene = None
+        for s in (frec.get("report") or {}).get("scenes", []):
+            if s.get("name") == job.get("scene"):
+                scene = s
+        fields["frames"] = _clean_frames(body.frames, scene or job.get("frames"))
+    if fields:
+        store.update_job(jid, **fields)
+    return {"job": store.get_job(jid)}
+
+
+class FormatBody(BaseModel):
+    job_ids: list[str] | None = None   # None = todos los trabajos en cola
+    format: str | None = None          # "" o None = volver al formato del .blend
+    color_depth: str | None = None
+    color_mode: str | None = None
+    quality: int | None = None
+    exr_codec: str | None = None
+    ffmpeg_container: str | None = None
+    ffmpeg_codec: str | None = None
+
+
+@app.post("/api/jobs/format")
+def api_jobs_format(body: FormatBody):
+    """Aplica un formato de salida a varios trabajos en cola de una vez.
+
+    Resuelve el caso típico: se encolan archivos de distintos proyectos y uno
+    venía guardado en otro formato. Solo toca las claves de formato; el resto
+    de overrides (carpeta, motor, samples…) de cada trabajo se conserva.
+    """
+    patch = formats.normalize({k: getattr(body, k) for k in formats.FORMAT_KEYS})
+    wanted = set(body.job_ids) if body.job_ids else None
+    changed = []
+    for job in store.jobs():
+        if job.get("status") != "queued":
+            continue
+        if wanted is not None and job.get("id") not in wanted:
+            continue
+        ov = {k: v for k, v in (job.get("overrides") or {}).items()
+              if k not in formats.FORMAT_KEYS}
+        ov.update(patch)
+        store.update_job(job["id"], overrides=ov)
+        changed.append(job["id"])
+    return {"changed": changed, "format": patch}
 
 
 class MoveBody(BaseModel):
@@ -215,8 +336,10 @@ class MoveBody(BaseModel):
 
 @app.post("/api/jobs/{jid}/move")
 def api_job_move(jid: str, body: MoveBody):
-    store.move_job(jid, 1 if body.direction >= 0 else -1)
-    return {"ok": True}
+    if not store.get_job(jid):
+        raise HTTPException(404, "Trabajo no encontrado")
+    moved = store.move_job(jid, 1 if body.direction >= 0 else -1)
+    return {"ok": True, "moved": moved}
 
 
 @app.post("/api/jobs/{jid}/cancel")
@@ -231,7 +354,8 @@ def api_job_cancel(jid: str):
 def api_job_retry(jid: str):
     if not store.get_job(jid):
         raise HTTPException(404, "Trabajo no encontrado")
-    worker.retry(jid)
+    if not worker.retry(jid):
+        raise HTTPException(409, "El trabajo está renderizando: cancélalo antes de reintentar")
     return {"ok": True}
 
 
