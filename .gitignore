@@ -2,3 +2,8 @@
 data/
 __pycache__/
 *.pyc
+*.blend1
+*.blend2
+.playwright-mcp/
+.vscode/
+.idea/
