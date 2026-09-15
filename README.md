@@ -99,6 +99,18 @@ format makes BlendQueue write a single file instead of a numbered sequence, and 
 preview adapts (linear EXR is tone-mapped by ffmpeg; multilayer EXR has no preview because
 ffmpeg cannot decode it).
 
+## Existing frames
+
+Before queueing, BlendQueue looks at the output folder. If frames are already there it asks what
+to do, because Blender does either thing silently:
+
+- **Overwrite** — render everything again, replacing the files.
+- **Skip existing** — render only what is missing, which is how you resume an interrupted sequence.
+
+A scene whose `.blend` has Overwrite off carries a **no overwrite** tag, and the same choice sits
+in *Overrides…* as *Existing frames*. If a render ends up writing nothing because every frame was
+skipped, the job says so instead of reporting a silent success with zero files.
+
 ## Python scripts per job
 
 Anything the built-in overrides don't cover, a script can: delete duplicate materials, swap the
@@ -192,7 +204,8 @@ tests\run_smoke.bat quick
 
 Modes: `quick` (EEVEE sequence), `multi` (scene selection via `-S`), `cycles` (GPU),
 `format` (format overrides: EXR, video, editing a queued job, bulk apply),
-`script` (per-job Python: library, real effect on the render, frozen copy, failure), and
+`script` (per-job Python: library, real effect on the render, frozen copy, failure),
+`overwrite` (existing frames: preflight, skipping them, forcing the overwrite), and
 `real "G:/path/file.blend" [render]` for one of your own files.
 
 ## Troubleshooting

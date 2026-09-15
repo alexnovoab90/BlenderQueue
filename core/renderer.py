@@ -58,6 +58,64 @@ def output_stem(job: dict) -> str:
     return f"{blend}_{sanitize(job['scene'])}"
 
 
+def output_target(job: dict, scene_report: dict | None) -> tuple:
+    """(folder, prefix, extension) this job would write into.
+
+    Blender names frames `<filepath><number>.<ext>`, so the filepath's tail is a
+    prefix, not a folder, unless it ends with a separator.
+    """
+    pattern = output_pattern(job, scene_report) or ""
+    # A trailing separator means "write into this folder", but normpath in
+    # resolve_relative drops it, so remember it before resolving.
+    is_folder = pattern.endswith(("/", "\\"))
+    if pattern.startswith("//"):
+        pattern = resolve_relative(pattern, job["file_path"])
+    pattern = pattern.replace("####", "")
+    if is_folder or pattern.endswith(("/", "\\")):
+        folder, prefix = pattern, ""
+    else:
+        folder, prefix = os.path.split(pattern)
+    ext = (expected_extension(job, scene_report) or "").lower()
+    return os.path.abspath(folder) if folder else "", prefix, ext
+
+
+def existing_outputs(job: dict, scene_report: dict | None, frames: dict | None = None) -> list:
+    """Files already on disk that this job is about to write.
+
+    Used before queueing to ask what to do, because Blender either silently
+    skips them (Overwrite off) or silently replaces them (Overwrite on).
+    """
+    folder, prefix, ext = output_target(job, scene_report)
+    if not folder or not os.path.isdir(folder):
+        return []
+    fr = frames or job.get("frames") or {}
+    start, end = fr.get("start"), fr.get("end")
+    movie = effective_is_movie(job, scene_report)
+    hits = []
+    try:
+        for name in sorted(os.listdir(folder)):
+            low = name.lower()
+            if prefix and not low.startswith(prefix.lower()):
+                continue
+            if ext and not low.endswith(ext):
+                continue
+            if not os.path.isfile(os.path.join(folder, name)):
+                continue
+            if movie:
+                hits.append(name)
+                continue
+            m = re.search(r"(\d+)(?=\.[A-Za-z0-9]+$)", name)
+            if not m:
+                continue
+            n = int(m.group(1))
+            if start is not None and end is not None and not (int(start) <= n <= int(end)):
+                continue
+            hits.append(name)
+    except OSError:
+        return []
+    return hits
+
+
 def output_pattern(job: dict, scene_report: dict | None) -> str | None:
     """-o pattern for Blender.
 
@@ -184,6 +242,8 @@ def override_expr(job: dict) -> str | None:
         code = _device_code(ov["device"])
         if code:
             lines.append(code)
+    if ov.get("overwrite") is not None:
+        lines += _guard(f"sc.render.use_overwrite = {bool(ov['overwrite'])}", "overwrite")
     lines += format_code(ov)
     return "\n".join(lines) if len(lines) > 2 else None
 

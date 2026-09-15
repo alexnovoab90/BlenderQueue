@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import config, formats, notifier, system
+from core import config, formats, notifier, renderer, system
 from core.inspector import InspectorLane
 from core.store import Store
 from core.worker import RenderWorker
@@ -268,6 +268,8 @@ def _clean_overrides(raw: dict | None) -> dict:
     out_dir = str(ov.get("output_dir") or "").strip().strip('"')
     if out_dir:
         out["output_dir"] = out_dir
+    if ov.get("overwrite") is not None and str(ov.get("overwrite")) != "":
+        out["overwrite"] = bool(ov["overwrite"])
 
     # Python script. Picking one from the library stores a COPY of the code in
     # the job: editing the library later does not change what is already queued.
@@ -332,6 +334,38 @@ def api_job_add(body: JobBody):
         "scene_container": scene.get("ffmpeg_container"),
     }
     return {"job": store.add_job(job)}
+
+
+@app.post("/api/jobs/preflight")
+def api_job_preflight(body: JobBody):
+    """What this job would find on disk before it runs.
+
+    The UI asks with this: existing frames mean Blender either skips them
+    (Overwrite off) or replaces them, and both deserve a question.
+    """
+    frec = store.get_file(body.file_id)
+    if not frec:
+        raise HTTPException(404, "File not found")
+    scene = _scene_of(frec, body.scene)
+    job = {"file_path": frec["path"], "scene": body.scene,
+           "overrides": _clean_overrides(body.overrides)}
+    frames = _clean_frames(body.frames, scene)
+    folder, prefix, ext = renderer.output_target(job, scene)
+    hits = renderer.existing_outputs(job, scene, frames)
+    overwrite = (job["overrides"].get("overwrite")
+                 if job["overrides"].get("overwrite") is not None
+                 else bool(scene.get("use_overwrite", True)))
+    return {
+        "folder": folder,
+        "prefix": prefix,
+        "extension": ext,
+        "existing": len(hits),
+        "examples": hits[:3],
+        "frames": frames,
+        "scene_overwrite": bool(scene.get("use_overwrite", True)),
+        "overwrite": bool(overwrite),
+        "is_movie": renderer.effective_is_movie(job, scene),
+    }
 
 
 class JobPatchBody(BaseModel):

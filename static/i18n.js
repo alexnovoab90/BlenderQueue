@@ -93,6 +93,19 @@ const ES = {
   "BW (grayscale)": "BW (gris)",
   "RGBA (with alpha)": "RGBA (con alfa)",
 
+  "no overwrite": "sin sobrescribir",
+  "This scene skips frames that already exist (Overwrite is off in the .blend)":
+    "Esta escena salta los frames que ya existen (Overwrite desmarcado en el .blend)",
+  "Existing frames": "Frames existentes",
+  "Overwrite": "Sobrescribir",
+  "Skip existing": "Saltar los existentes",
+  "Blender either skips these files or replaces them, and it does it silently. Pick what this job should do — the .blend is not modified either way.":
+    "Blender los salta o los reemplaza, y lo hace en silencio. Elige qué debe hacer este trabajo; el .blend no se modifica en ninguno de los dos casos.",
+  "Render only the frames that are missing": "Renderizar solo los frames que faltan",
+  "Render every frame again, replacing the files": "Renderizar todos de nuevo, reemplazando los archivos",
+  "{label}: {n} file(s) already exist for frames {a}-{b}.":
+    "{label}: ya existen {n} archivo(s) para los frames {a}-{b}.",
+
   // ---- queue ----
   "Render queue": "Cola de renders",
   "Output format…": "Formato de salida…",

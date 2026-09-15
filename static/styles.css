@@ -411,6 +411,7 @@ textarea.code {
 .ov-script-wrap { display: flex; align-items: center; gap: 6px; }
 
 .tag.fmt { color: #9fbfe8; }
+.tag.warn-tag { color: var(--accent); border-color: #6c5514; background: #221c0c; }
 .chip.fmt { color: #9fbfe8; border-color: #26364d; }
 .chip.fmt.own { color: var(--accent); border-color: #6c5514; background: #221c0c; font-weight: 600; }
 .chip.warn { color: var(--accent); border-color: #6c5514; background: #221c0c; }

@@ -179,8 +179,12 @@ class RenderWorker:
                                       error=f"Blender exited with code {rc}. {tail}")
                 self._notify(settings, "Render failed", self._label(job))
             else:
-                if not outputs:
+                if not outputs and renderer.effective_is_movie(job, scene_report):
+                    # Only movies stay silent: image sequences always print
+                    # "Saved:", so no line means nothing was written. Scanning
+                    # the folder there would pick up a previous render's files.
                     outputs = self._scan_outputs(job, scene_report, started)
+                note = self._empty_render_note(log_path) if not outputs else None
                 preview = {}
                 if settings.get("preview_video", True):
                     dest = str(config.PREVIEWS_DIR / f"{jid}.mp4")
@@ -200,12 +204,15 @@ class RenderWorker:
                         video = renderer.build_preview_video(outputs, fps, dest, log=log_fn)
                     if not blocked or movie:
                         log_fn("preview: movie=%s outputs=%d video=%s"
-                               % (movie or "-", len(outputs), video or "no generado"))
+                               % (movie or "-", len(outputs), video or "not generated"))
                     if video:
                         preview["video"] = video
                 nframes = fend - fstart + 1
+                if note:
+                    preview["note"] = note
                 self.store.update_job(jid, status="done", finished_at=time.time(),
                                       duration_s=duration, outputs=outputs, preview=preview,
+                                      note=note,
                                       progress={"percent": 1.0, "frame": fend,
                                                 "message": "completed"})
                 self._notify(settings, "Render finished",
@@ -253,6 +260,23 @@ class RenderWorker:
                 fh.write(f"[blendqueue] {msg}\n")
         except Exception:
             pass
+
+    @staticmethod
+    def _empty_render_note(log_path) -> str | None:
+        """Why a successful render wrote nothing, so the job does not just say 'done'.
+
+        The usual cause is Overwrite being off in the .blend while the frames are
+        already on disk: Blender skips every one of them and exits fine.
+        """
+        try:
+            data = log_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return "No files were written. Check the job log."
+        if "skipped to not overwrite" in data or "Skipping existing frame" in data:
+            skipped = data.count("Skipping existing frame")
+            return (f"No files written: Blender skipped {skipped} frame(s) that already exist "
+                    "(Overwrite is off). Re-queue with Overwrite to render them again.")
+        return "No files were written. Check the job log."
 
     @staticmethod
     def _error_tail(log_path, limit: int = 800) -> str:

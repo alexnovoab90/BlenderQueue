@@ -107,6 +107,20 @@ un formato de película se escribe un único archivo en vez de una secuencia num
 se adapta (el EXR lineal lo convierte ffmpeg; el EXR multicapa no tiene preview porque ffmpeg no
 sabe leerlo).
 
+## Frames que ya existen
+
+Antes de encolar, BlendQueue mira la carpeta de salida. Si los frames ya están ahí te pregunta qué
+hacer, porque Blender hace cualquiera de las dos cosas en silencio:
+
+- **Sobrescribir** — renderiza todo de nuevo, reemplazando los archivos.
+- **Saltar los existentes** — renderiza solo lo que falta, que es como se retoma una secuencia
+  interrumpida.
+
+Una escena cuyo `.blend` tiene Overwrite desmarcado lleva una etiqueta **sin sobrescribir**, y la
+misma elección está en *Overrides…* como *Frames existentes*. Si un render termina sin escribir
+nada porque se saltó todos los frames, el trabajo lo dice en vez de reportar un éxito mudo con
+cero archivos.
+
 ## Scripts de Python por trabajo
 
 Lo que no cubren los overrides, lo cubre un script: borrar materiales duplicados, cambiar el
@@ -201,7 +215,8 @@ tests\run_smoke.bat quick
 
 Modos: `quick` (secuencia EEVEE), `multi` (selección de escena con `-S`), `cycles` (GPU),
 `format` (overrides de formato: EXR, video, editar un trabajo en cola, aplicar a toda la cola),
-`script` (scripts por trabajo: biblioteca, efecto real en el render, copia congelada, fallo) y
+`script` (scripts por trabajo: biblioteca, efecto real en el render, copia congelada, fallo),
+`overwrite` (frames existentes: preflight, saltarlos, forzar la sobrescritura) y
 `real "G:/ruta/archivo.blend" [render]` para uno de tus propios archivos.
 
 ## Problemas comunes

@@ -335,6 +335,9 @@ function sceneRow(f, s) {
         '<span class="tag script' + (d.script_id && scriptById(d.script_id) ? '' : ' hidden') +
           '" title="' + esc(t("Python script for this job")) + '">' +
           esc(d.script_id && scriptById(d.script_id) ? scriptById(d.script_id).name : '') + '</span>' +
+        (s.use_overwrite === false ? '<span class="tag warn-tag" title="' +
+          esc(t("This scene skips frames that already exist (Overwrite is off in the .blend)")) +
+          '">' + esc(t("no overwrite")) + '</span>' : '') +
         (s.camera ? '<span class="tag">cam ' + esc(s.camera) + '</span>' : '') +
         '<span class="tag out' + (d.out ? ' out-own' : '') + '" data-raw="' + esc(s.filepath_raw || '') + '" data-abs="' + esc(s.filepath_abs || '') + '" title="' + esc(d.out || s.filepath_abs || '') + '">→ ' + esc(d.out || out) + '</span>' +
       '</span>' +
@@ -361,6 +364,11 @@ function sceneRow(f, s) {
       '</select></label>' +
       '<label>' + esc(t("Resolution %")) + ' <input class="input num ov-res" type="number" min="1" max="400" style="width:64px" value="' + esc(d.res ?? "") + '"></label>' +
       '<label>' + esc(t("Script")) + ' <select class="input ov-script">' + scriptOptions(d.script_id) + '</select></label>' +
+      '<label>' + esc(t("Existing frames")) + ' <select class="input ov-overwrite">' +
+        '<option value="">' + esc(t("(from the file)")) + '</option>' +
+        '<option value="1"' + (d.overwrite === "1" ? " selected" : "") + '>' + esc(t("Overwrite")) + '</option>' +
+        '<option value="0"' + (d.overwrite === "0" ? " selected" : "") + '>' + esc(t("Skip existing")) + '</option>' +
+      '</select></label>' +
       '<label class="grow">' + esc(t("Output")) + ' <input class="input ov-out" placeholder="' + esc(t("(the file's)")) + '" value="' + esc(d.out ?? "") + '"></label>' +
       '<button class="btn sm ghost" data-act="pick-out">' + esc(t("Choose folder…")) + '</button>' +
       '<div class="fmt-fields ov-format" data-label="' + esc(t("OUTPUT FORMAT")) + '">' + formatFields(d.fmt || {}) + '</div>' +
@@ -372,7 +380,7 @@ function readOverrideRow(row) {
   const g = sel => { const el = row.querySelector(sel); return el ? el.value : ""; };
   return { start: g(".ov-start"), end: g(".ov-end"), engine: g(".ov-engine"),
            samples: g(".ov-samples"), device: g(".ov-device"), res: g(".ov-res"), out: g(".ov-out"),
-           script_id: g(".ov-script"),
+           script_id: g(".ov-script"), overwrite: g(".ov-overwrite"),
            fmt: readFormat(row.querySelector(".ov-format")) };
 }
 
@@ -504,8 +512,11 @@ function progressText(j, pct) {
     else if (p.eta_s != null) txt += tf(" · left ~{x}", { x: fmtDur(p.eta_s) });
     return txt;
   }
-  if (j.status === "done") return tf("done · {n} file(s) · {d}",
-                                     { n: (j.outputs || []).length, d: fmtDur(j.duration_s) });
+  if (j.status === "done") {
+    const base = tf("done · {n} file(s) · {d}",
+                    { n: (j.outputs || []).length, d: fmtDur(j.duration_s) });
+    return j.note ? base + " · " + j.note : base;
+  }
   if (j.status === "error") return tf("error: {e}", { e: j.error || "" });
   if (j.status === "canceled") return t("canceled");
   return j.status;
@@ -899,7 +910,32 @@ document.addEventListener("input", (e) => {
   }
 });
 
-async function enqueueScene(row) {
+/** Answer remembered while queueing a batch, so we ask once per "Queue all". */
+let overwriteChoice = null;
+
+/** Shows what is already on disk and returns true/false/null (cancel). */
+function askOverwrite(info, label) {
+  return new Promise(resolve => {
+    $("#owScope").textContent = tf("{label}: {n} file(s) already exist for frames {a}-{b}.", {
+      label, n: info.existing, a: (info.frames || {}).start, b: (info.frames || {}).end });
+    $("#owFolder").textContent = info.folder + (info.examples || []).length
+      ? info.folder + "  (" + (info.examples || []).join(", ") + "…)" : info.folder;
+    const modal = $("#overwriteModal");
+    const done = (value) => {
+      modal.classList.add("hidden");
+      $("#owOverwrite").onclick = $("#owSkip").onclick = null;
+      modal.onclick = null;
+      resolve(value);
+    };
+    $("#owOverwrite").onclick = () => done(true);
+    $("#owSkip").onclick = () => done(false);
+    modal.querySelectorAll("[data-close]").forEach(b => { b.onclick = () => done(null); });
+    modal.onclick = e => { if (e.target === modal) done(null); };
+    modal.classList.remove("hidden");
+  });
+}
+
+async function enqueueScene(row, batch = false) {
   if (!row) return;
   const d = readOverrideRow(row);
   const body = { file_id: row.dataset.file, scene: row.dataset.scene };
@@ -914,17 +950,33 @@ async function enqueueScene(row) {
   if (d.res !== "") ov.resolution_percentage = Number(d.res);
   if (d.out) ov.output_dir = d.out;
   if (d.script_id) ov.script_id = d.script_id;
+  if (d.overwrite !== "") ov.overwrite = d.overwrite === "1";
   Object.assign(ov, d.fmt || {});
   if (Object.keys(ov).length) body.overrides = ov;
+
+  // Existing files on disk are never overwritten (or skipped) without asking.
+  if (ov.overwrite === undefined) {
+    const info = await api("/api/jobs/preflight", { method: "POST", body: JSON.stringify(body) });
+    if (info.existing > 0) {
+      const answer = batch && overwriteChoice !== null
+        ? overwriteChoice
+        : await askOverwrite(info, row.dataset.scene);
+      if (answer === null) return;
+      if (batch) overwriteChoice = answer;
+      body.overrides = Object.assign(ov, { overwrite: answer });
+    }
+  }
   await api("/api/jobs", { method: "POST", body: JSON.stringify(body) });
   toast(t("Queued: ") + row.dataset.scene, "ok");
 }
 
 async function enqueueAll(fid) {
   const rows = $$('.scene[data-file="' + fid + '"]');
+  overwriteChoice = null;          // ask once, then reuse the answer for this batch
   for (const row of rows) {
-    try { await enqueueScene(row); } catch (err) { toast(String(err.message || err), "error"); }
+    try { await enqueueScene(row, true); } catch (err) { toast(String(err.message || err), "error"); }
   }
+  overwriteChoice = null;
 }
 
 function showFrame(jid, frame) {

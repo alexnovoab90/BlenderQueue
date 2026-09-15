@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BlendQueue — local render queue for Blender</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=8">
+  <link rel="stylesheet" href="/static/styles.css?v=9">
 </head>
 <body>
   <header class="topbar">
@@ -185,6 +185,31 @@
     </div>
   </div>
 
+  <!-- Modal: existing frames found before queueing -->
+  <div class="modal hidden" id="overwriteModal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 data-i18n>Existing frames</h3>
+        <button class="x" data-close="overwriteModal">✕</button>
+      </div>
+      <div class="settings">
+        <div id="owScope"></div>
+        <div class="muted small" id="owFolder"></div>
+        <div class="muted small" data-i18n>Blender either skips these files or replaces them, and it
+          does it silently. Pick what this job should do — the .blend is not modified either way.</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" data-close="overwriteModal" data-i18n>Cancel</button>
+        <div class="foot-actions">
+          <button class="btn" id="owSkip" data-i18n data-i18n-title
+            title="Render only the frames that are missing">Skip existing</button>
+          <button class="btn primary" id="owOverwrite" data-i18n data-i18n-title
+            title="Render every frame again, replacing the files">Overwrite</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: job log -->
   <div class="modal hidden" id="logModal">
     <div class="modal-box wide">
@@ -209,7 +234,7 @@
     </div>
   </div>
 
-  <script src="/static/i18n.js?v=8"></script>
-  <script src="/static/app.js?v=8"></script>
+  <script src="/static/i18n.js?v=9"></script>
+  <script src="/static/app.js?v=9"></script>
 </body>
 </html>

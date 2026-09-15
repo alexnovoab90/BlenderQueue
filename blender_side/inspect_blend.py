@@ -97,6 +97,9 @@ def _format_info(r):
         "color_mode": getattr(ims, "color_mode", None),
         "color_depth": getattr(ims, "color_depth", None),
         "use_file_extension": bool(getattr(r, "use_file_extension", True)),
+        # Overwrite off means Blender skips frames already on disk (resume a render).
+        "use_overwrite": bool(getattr(r, "use_overwrite", True)),
+        "use_placeholder": bool(getattr(r, "use_placeholder", False)),
     }
     for attr in ("quality", "compression"):
         try:
