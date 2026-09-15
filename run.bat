@@ -6,7 +6,7 @@ if not exist ".venv\Scripts\python.exe" goto setup
 goto run
 
 :setup
-echo [BlendQueue] Preparando entorno virtual...
+echo [BlendQueue] Preparing the virtual environment...
 where uv >nul 2>nul
 if errorlevel 1 goto setuppip
 uv venv .venv
@@ -25,6 +25,6 @@ start "" http://127.0.0.1:8777/
 exit /b 0
 
 :serve
-echo [BlendQueue] Iniciando en http://127.0.0.1:8777/  (detener: boton Cerrar en la app, o cerrar esta ventana)
+echo [BlendQueue] Starting at http://127.0.0.1:8777/  (to stop: the Quit button in the app, or close this window)
 ".venv\Scripts\python.exe" server.py
 if errorlevel 1 pause

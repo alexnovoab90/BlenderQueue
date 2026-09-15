@@ -1,4 +1,4 @@
-"""Notificaciones de escritorio (Windows toast) para BlendQueue."""
+"""Desktop notifications (Windows toast) for BlendQueue."""
 from __future__ import annotations
 
 import subprocess
@@ -7,7 +7,7 @@ from . import config
 
 
 def notify(title: str, message: str) -> bool:
-    """Muestra un toast en el escritorio. Primero winotify; si falla, PowerShell."""
+    """Shows a desktop toast. winotify first; PowerShell if that fails."""
     if _winotify(title, message):
         return True
     return _powershell(title, message)

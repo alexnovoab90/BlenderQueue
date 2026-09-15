@@ -90,7 +90,7 @@ main {
 .small { font-size: 12px; }
 .hidden { display: none !important; }
 
-/* ---------- botones ---------- */
+/* ---------- buttons ---------- */
 .btn {
   appearance: none;
   border: 1px solid var(--border);
@@ -159,7 +159,7 @@ code { background: #10141b; border: 1px solid var(--border); border-radius: 5px;
 .chip.error { color: var(--red); border-color: #4a1f1f; }
 .chip.canceled { color: #8a93a4; }
 
-/* ---------- archivos ---------- */
+/* ---------- files ---------- */
 .files { display: flex; flex-direction: column; gap: 12px; }
 
 .file-card {
@@ -221,7 +221,7 @@ code { background: #10141b; border: 1px solid var(--border); border-radius: 5px;
 
 .empty { padding: 10px 4px; font-size: 13px; }
 
-/* ---------- cola ---------- */
+/* ---------- queue ---------- */
 .queue { display: flex; flex-direction: column; gap: 10px; }
 
 .job {
@@ -285,7 +285,7 @@ code { background: #10141b; border: 1px solid var(--border); border-radius: 5px;
 .toast.out { opacity: 0; transform: translateX(12px); transition: all .35s ease; }
 @keyframes slidein { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; } }
 
-/* ---------- modales ---------- */
+/* ---------- modals ---------- */
 .modal {
   position: fixed;
   inset: 0;
@@ -368,7 +368,7 @@ code { background: #10141b; border: 1px solid var(--border); border-radius: 5px;
 
 select.input.lang { padding: 4px 6px; font-size: 12px; }
 
-/* ---------- formato de salida ---------- */
+/* ---------- output format ---------- */
 .head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 .fmt-fields {

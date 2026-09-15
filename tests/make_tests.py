@@ -1,8 +1,8 @@
-"""Genera los .blend de prueba de BlendQueue en data/tests/.
+"""Generates BlendQueue's test .blend files into data/tests/.
 
     blender.exe -b --factory-startup --python tests/make_tests.py -- "<repo>/data/tests"
 
-Crea: quick.blend (EEVEE, 8 frames), multi.blend (dos escenas) y
+Creates: quick.blend (EEVEE, 8 frames), multi.blend (two scenes) and
 quick_cycles.blend (Cycles, 2 frames).
 """
 import os
@@ -72,7 +72,7 @@ def make_multi(path):
     _animate_cube(sc, 1, 6, -2.0, 2.0)
     sc_b = sc.copy()
     sc_b.name = "EscenaB"
-    sc_b.use_fake_user = True  # sin esto Blender no guarda escenas sin ventana asignada
+    sc_b.use_fake_user = True  # without this Blender drops scenes with no window
     sc_b.frame_start, sc_b.frame_end = 1, 4
     sc_b.render.filepath = "//b_render_"
     bpy.ops.wm.save_as_mainfile(filepath=path)

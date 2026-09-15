@@ -1,6 +1,6 @@
 "use strict";
 
-/* ============================ utilidades ============================ */
+/* ============================ helpers ============================ */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
@@ -72,9 +72,9 @@ function beep() {
   } catch (e) { }
 }
 
-/* ============================ formatos de salida ============================ */
-/* El catálogo lo arma el servidor leyendo los enums del Blender detectado, así
-   que la UI nunca ofrece un formato que esa instalación no soporte. */
+/* ============================ output formats ============================ */
+/* The server builds the catalog from the detected Blender's own enums, so the
+   UI never offers a format that install does not support. */
 const FORMAT_KEYS = ["format", "color_depth", "color_mode", "quality",
                      "exr_codec", "ffmpeg_container", "ffmpeg_codec"];
 let FMT = null;
@@ -84,9 +84,9 @@ async function loadFormats(key) {
   try {
     FMT = await api("/api/formats");
     fmtKey = key;
-    filesSig = null;   // re-dibuja las escenas ya con los selects de formato
+    filesSig = null;   // redraw the scenes, now with the format selects
     queueSig = null;
-  } catch (e) { /* se reintenta en el siguiente tick */ }
+  } catch (e) { /* retried on the next tick */ }
 }
 
 function fmtSpec(id) {
@@ -123,7 +123,7 @@ function optionList(items, value, blank) {
   return h;
 }
 
-/** Controles de formato (los mismos en los overrides de escena y en el modal). */
+/** Format controls (the same ones in the scene overrides and in the modal). */
 function formatFields(v) {
   v = v || {};
   const all = (FMT && FMT.formats) || [];
@@ -154,7 +154,7 @@ function formatFields(v) {
         optionList((FMT && FMT.ffmpeg_codecs) || [], v.ffmpeg_codec, t("(default)")) + '</select></label>';
 }
 
-/** Muestra solo las opciones que aplican al formato elegido. */
+/** Shows only the options that apply to the chosen format. */
 function syncFormatFields(root, v) {
   if (!root) return;
   v = v || {};
@@ -186,13 +186,13 @@ function syncFormatFields(root, v) {
   if (ql) ql.textContent = t((s && s.quality_label) || "Quality %");
 }
 
-/** Lee los controles visibles y arma el override de formato. */
+/** Reads the visible controls and builds the format override. */
 function readFormat(root) {
   const out = {};
   if (!root) return out;
   const sel = root.querySelector(".fmt-format");
   const fmt = sel ? sel.value : "";
-  if (!fmt) return out;               // "(the file's one)": sin override
+  if (!fmt) return out;               // "(the file's one)": no override
   out.format = fmt;
   const g = q => {
     const el = root.querySelector(q);
@@ -207,7 +207,7 @@ function readFormat(root) {
   return out;
 }
 
-/* ============================ scripts de Python ============================ */
+/* ============================ Python scripts ============================ */
 function scriptsList() { return (state && state.scripts) || []; }
 
 function scriptById(id) { return scriptsList().find(s => s.id === id) || null; }
@@ -218,12 +218,12 @@ function scriptOptions(selected) {
   return optionList(scriptsList().map(s => ({ id: s.id, label: s.name })), selected, t("(none)"));
 }
 
-/* ============================ tick principal ============================ */
+/* ============================ main tick ============================ */
 async function tick() {
   try {
     state = await api("/api/state");
   } catch (e) {
-    return; // servidor caído: se reintenta solo
+    return; // server down: it retries by itself
   }
   if (!FMT || state.formats_key !== fmtKey) await loadFormats(state.formats_key);
   renderStatus(state);
@@ -235,7 +235,7 @@ async function tick() {
 setInterval(tick, 1000);
 tick();
 
-/* ============================ cabecera ============================ */
+/* ============================ header ============================ */
 function renderStatus(st) {
   const b = $("#blenderBadge");
   if (st.blender.ok) {
@@ -252,7 +252,7 @@ function renderStatus(st) {
   pause.classList.toggle("warn", !!st.worker.paused);
 }
 
-/* ============================ archivos ============================ */
+/* ============================ files ============================ */
 function renderFiles(st) {
   const insp = st.inspector && st.inspector.current_file_id;
   $("#filesCount").textContent = st.files.length ? tf("{n} file(s)", { n: st.files.length }) : "";
@@ -266,7 +266,7 @@ function renderFiles(st) {
   el.innerHTML = st.files.map(f => fileCard(f, insp === f.id)).join("")
     || '<div class="empty muted">' +
        esc(t("No files yet. Drop a .blend above or use “Pick a path on this computer…”.")) + '</div>';
-  // Los selects de formato dependen del formato elegido: se sincronizan al dibujar.
+  // The format selects depend on the chosen format: sync them after drawing.
   $$(".ov-format", el).forEach(root => {
     const row = root.closest(".scene");
     const d = (row && overrideDraft[row.dataset.file + "|" + row.dataset.scene]) || {};
@@ -421,8 +421,8 @@ function updateSceneScriptTag(row) {
   tag.classList.toggle("hidden", !sc);
 }
 
-/* ============================ cola ============================ */
-/** Formato con el que se va a escribir el trabajo: el override, o el del .blend. */
+/* ============================ queue ============================ */
+/** Format the job will write with: the override, or the .blend's own. */
 function jobFormatId(j) {
   return ((j.overrides || {}).format) || j.scene_format || "";
 }
@@ -588,7 +588,7 @@ function jobCard(j) {
 }
 
 const WEB_IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".avif"];
-const detailFrames = {};   // jid -> frames que sí se pueden ver en el navegador
+const detailFrames = {};   // jid -> frames the browser can actually display
 
 function fileExt(name) {
   const i = String(name || "").lastIndexOf(".");
@@ -613,7 +613,7 @@ async function loadDetails(jid) {
   try { data = await api("/api/jobs/" + jid + "/outputs"); }
   catch (e) { box.innerHTML = '<div class="muted">' + esc(t("No output data.")) + '</div>'; return; }
   const outs = (data.outputs || []).filter(o => o.exists);
-  // EXR, TIFF, DPX… el navegador no los dibuja: para esos solo queda el MP4.
+  // EXR, TIFF, DPX... the browser cannot draw them: only the MP4 is left.
   const shots = outs.filter(o => isWebImage(o.name));
   detailFrames[jid] = shots.map(o => o.frame).filter(f => f != null);
   let html = "";
@@ -642,7 +642,7 @@ async function loadDetails(jid) {
   box.dataset.loaded = "1";
 }
 
-/* ============================ modal de formato ============================ */
+/* ============================ format modal ============================ */
 let fmtTarget = null;   // {mode: "job", id} | {mode: "queue"}
 
 function openFormatModal(mode, job) {
@@ -702,9 +702,9 @@ $("#fmtApply").addEventListener("click", async () => {
 
 $("#btnQueueFormat").addEventListener("click", () => openFormatModal("queue"));
 
-/* ============================ biblioteca de scripts ============================ */
-let scriptTarget = null;   // null = solo biblioteca | {mode:"job", id} | {mode:"queue"}
-let scriptEditing = "";    // id del script abierto en el editor ("" = nuevo)
+/* ============================ script library ============================ */
+let scriptTarget = null;   // null = library only | {mode:"job", id} | {mode:"queue"}
+let scriptEditing = "";    // id of the script open in the editor ("" = new one)
 
 function openScriptModal(target, preselect) {
   scriptTarget = target || null;
@@ -747,7 +747,7 @@ function editorIsDirty() {
   return sc.name !== $("#scriptName").value || sc.code !== $("#scriptCode").value;
 }
 
-/** Guarda el script abierto (alta o edición) y devuelve su id. */
+/** Saves the open script (new or edited) and returns its id. */
 async function saveScript() {
   const body = { name: $("#scriptName").value.trim() || t("Untitled"), code: $("#scriptCode").value };
   const r = scriptEditing
@@ -801,7 +801,7 @@ $("#scriptDel").addEventListener("click", async () => {
 $("#scriptApply").addEventListener("click", async () => {
   try {
     let id = $("#scriptPick").value;
-    if (id && editorIsDirty()) id = await saveScript();   // aplica lo que ves, no lo viejo
+    if (id && editorIsDirty()) id = await saveScript();   // apply what you see, not the old copy
     if (scriptTarget && scriptTarget.mode === "job") {
       const job = ((state && state.jobs) || []).find(j => j.id === scriptTarget.id);
       if (!job) throw new Error(t("The job is no longer in the queue"));
@@ -827,7 +827,7 @@ $("#scriptApply").addEventListener("click", async () => {
 $("#btnScripts").addEventListener("click", () => openScriptModal(null));
 $("#btnQueueScript").addEventListener("click", () => openScriptModal({ mode: "queue" }));
 
-/* ============================ acciones (delegación) ============================ */
+/* ============================ actions (delegated) ============================ */
 document.addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-act]");
   if (!btn) return;
@@ -948,7 +948,7 @@ function openFrame(jid, frame) {
   $("#frameModal").classList.remove("hidden");
 }
 
-/** Avanza dentro de los frames que realmente existen (no más allá del render). */
+/** Steps through the frames that actually exist (never past the render). */
 function stepFrame(delta) {
   const img = $("#frameImg");
   const jid = img.dataset.jid;
@@ -963,7 +963,7 @@ function stepFrame(delta) {
 $("#framePrev").addEventListener("click", () => stepFrame(-1));
 $("#frameNext").addEventListener("click", () => stepFrame(1));
 
-/* ============================ subida (drag & drop / input) ============================ */
+/* ============================ upload (drag & drop / input) ============================ */
 function setupDropzone() {
   const dz = $("#dropzone");
   ["dragenter", "dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("over"); }));
@@ -1002,7 +1002,7 @@ function uploadFiles(fl) {
   xhr.send(fd);
 }
 
-/* ============================ explorador de archivos ============================ */
+/* ============================ file browser ============================ */
 const fs = { mode: "add", selected: new Set(), path: "", targetInput: null };
 
 async function openFs(mode, targetInput = null, startPath = "") {
@@ -1086,7 +1086,7 @@ $("#fsPickDir").addEventListener("click", async () => {
   tick();
 });
 
-/* ============================ ajustes ============================ */
+/* ============================ settings ============================ */
 function fillSettings() {
   if (!state) return;
   const s = state.settings || {}, b = state.blender || {};
@@ -1142,7 +1142,7 @@ async function viewLog(jid) {
   } catch (err) { toast(String(err.message || err), "error"); }
 }
 
-/* ============================ modales genéricos ============================ */
+/* ============================ generic modals ============================ */
 function closeModal(id) { $("#" + id).classList.add("hidden"); }
 $$(".modal").forEach(m => m.addEventListener("click", e => { if (e.target === m) m.classList.add("hidden"); }));
 $$("[data-close]").forEach(b => b.addEventListener("click", () => closeModal(b.dataset.close)));
@@ -1154,7 +1154,7 @@ document.addEventListener("keydown", e => {
   }
 });
 
-/* ============================ inicio ============================ */
+/* ============================ startup ============================ */
 $("#btnPause").addEventListener("click", async () => {
   try { await api("/api/queue/pause", { method: "POST", body: JSON.stringify({}) }); tick(); }
   catch (err) { toast(String(err.message || err), "error"); }
@@ -1169,7 +1169,7 @@ $("#btnShutdown").addEventListener("click", async () => {
 $("#langSel").value = LANG;
 $("#langSel").addEventListener("change", e => {
   setLang(e.target.value);
-  filesSig = null;   // re-dibuja todo lo que se arma en JS
+  filesSig = null;   // redraw everything that JS builds
   queueSig = null;
   tick();
 });

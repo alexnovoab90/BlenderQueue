@@ -1,13 +1,13 @@
-"""Fase Blender: extrae metadatos de un .blend (escenas, frames, salidas, dependencias).
+"""Blender side: extracts a .blend's metadata (scenes, frames, output, dependencies).
 
-Este script corre DENTRO de Blender, no en el servidor:
+This script runs INSIDE Blender, not in the server:
 
-    blender.exe -b "archivo.blend" --python inspect_blend.py -- "salida.json"
+    blender.exe -b "file.blend" --python inspect_blend.py -- "report.json"
 
-Escribe un JSON con la información de cada escena (rango de frames, resolución,
-motor, samples, cámara, formato y salida) más el chequeo de dependencias
-externas (texturas, bibliotecas) que puedan faltar y los formatos de salida
-que soporta esta instalación de Blender ("capabilities").
+It writes a JSON with each scene's information (frame range, resolution, engine,
+samples, camera, format and output path), the check for missing external
+dependencies (textures, libraries) and the output formats this Blender install
+supports ("capabilities").
 """
 import json
 import os
@@ -18,10 +18,10 @@ import bpy
 
 MOVIE_FORMATS = {"FFMPEG", "AVI_JPEG", "AVI_RAW"}
 
-# Referencias que NO son dependencias reales de render (ruido típico):
-#  - copybuffer.blend: buffer interno de copiar/pegar de Blender
-#  - datafiles/assets: librerías de assets incluidas en la instalación de Blender
-#  - blends temporales en carpetas Temp
+# References that are NOT real render dependencies (the usual noise):
+#  - copybuffer.blend: Blender's internal copy/paste buffer
+#  - datafiles/assets: asset libraries shipped with the Blender install
+#  - temporary blends inside Temp folders
 NOISE_RE = re.compile(
     r"copybuffer\.blend$"
     r"|datafiles[\\/]+assets[\\/]"
@@ -45,7 +45,7 @@ def _exists(p):
 
 
 def _enum_items(rna_struct, prop_name):
-    """Ítems de un enum leídos del RNA del tipo (lista completa, no filtrada)."""
+    """Enum items read from the type's RNA (the full list, unfiltered)."""
     out, seen = [], set()
     try:
         prop = rna_struct.bl_rna.properties[prop_name]
@@ -65,7 +65,7 @@ def _enum_items(rna_struct, prop_name):
 
 
 def _capabilities():
-    """Formatos de salida que ofrece esta instalación (para la UI de BlendQueue)."""
+    """Output formats this install offers (for the BlendQueue UI)."""
     caps = {"blender_version": bpy.app.version_string}
     try:
         ims = bpy.types.ImageFormatSettings
@@ -87,7 +87,7 @@ def _capabilities():
 
 
 def _format_info(r):
-    """Ajustes de salida de una escena (image_settings + ffmpeg)."""
+    """A scene's output settings (image_settings + ffmpeg)."""
     ims = r.image_settings
     fmt = ims.file_format
     info = {

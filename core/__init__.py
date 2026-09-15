@@ -1,1 +1,1 @@
-"""BlendQueue: paquete principal del servidor."""
+"""BlendQueue: the server package."""

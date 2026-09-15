@@ -1,4 +1,4 @@
-"""Configuración, rutas y localización de Blender para BlendQueue."""
+"""Configuration, paths and Blender discovery for BlendQueue."""
 from __future__ import annotations
 
 import glob
@@ -17,7 +17,7 @@ OUTPUTS_DIR = DATA_DIR / "outputs"
 LOGS_DIR = DATA_DIR / "logs"
 PREVIEWS_DIR = DATA_DIR / "previews"
 INSPECT_DIR = DATA_DIR / "inspect"
-SCRIPTS_DIR = DATA_DIR / "scripts"   # copia del script que corre en cada trabajo
+SCRIPTS_DIR = DATA_DIR / "scripts"   # copy of the script each job runs
 TESTS_DIR = DATA_DIR / "tests"
 STATIC_DIR = APP_DIR / "static"
 BLENDER_SIDE_DIR = APP_DIR / "blender_side"
@@ -25,7 +25,7 @@ STATE_FILE = DATA_DIR / "state.json"
 
 DEFAULT_PORT = 8777
 
-# Carpetas donde suele quedar Blender (instalador, Steam, portable en otra unidad).
+# Where Blender usually lives (installer, Steam, portable on another drive).
 INSTALL_DIRS = (
     r"{drive}:\Program Files\Blender Foundation",
     r"{drive}:\Program Files (x86)\Blender Foundation",
@@ -48,14 +48,14 @@ def ensure_dirs() -> None:
 
 
 def _version_key(path: str) -> tuple:
-    """Ordena 'Blender 5.2' por encima de 'Blender 4.5' (y de 'Blender 4.10')."""
+    """Sorts 'Blender 5.2' above 'Blender 4.5' (and above 'Blender 4.10')."""
     folder = os.path.basename(os.path.dirname(path))
     nums = tuple(int(n) for n in re.findall(r"\d+", folder))
     return nums or (0,)
 
 
 def find_blender() -> str | None:
-    """Busca blender.exe: variable de entorno, instalaciones, PATH y Steam."""
+    """Finds blender.exe: env var, known installs, PATH and Steam."""
     env = os.environ.get("BLENDQUEUE_BLENDER", "").strip().strip('"')
     if env and pathlib.Path(env).is_file():
         return env
@@ -92,12 +92,12 @@ def _bi_result() -> dict:
 
 
 def blender_info(path: str | None = None, force: bool = False) -> dict:
-    """Devuelve {'ok', 'path', 'version', 'error'} con caché de ~60 s.
+    """Returns {'ok', 'path', 'version', 'error'}, cached for ~60 s.
 
-    ``path`` es la ruta configurada en Ajustes (None = autodetectar). Solo se
-    vuelve a ejecutar 'blender --version' si cambió esa ruta, si venció la
-    caché o si se pide ``force``: la UI consulta el estado cada segundo y
-    lanzar un proceso por consulta era carísimo.
+    ``path`` is the path set in Settings (None = autodetect). 'blender --version'
+    only runs again if that path changed, if the cache expired or if ``force``
+    is given: the UI polls the state every second and spawning a process per
+    poll was very expensive.
     """
     with _bi_lock:
         configured = (path or "").strip() or None
@@ -112,7 +112,7 @@ def blender_info(path: str | None = None, force: bool = False) -> dict:
         _BI["checked"] = time.time()
         if not p:
             _BI["version"] = None
-            _BI["error"] = "No se encontró blender.exe"
+            _BI["error"] = "blender.exe not found"
             return _bi_result()
         try:
             out = subprocess.run([p, "--version"], capture_output=True, text=True, timeout=60,

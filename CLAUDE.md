@@ -99,8 +99,9 @@ stem and mtime.
   `data-i18n` (plus `data-i18n-title` / `data-i18n-ph`). Adding a string means adding it in
   English and, if it should translate, one entry in `i18n.js`; untranslated keys fall back to
   English. Server messages are English only (few, mostly interpolated).
-- Code comments, docstrings and commit messages are in Spanish; `README.md` is the English entry
-  point and `README.es.md` its Spanish twin. Match the file you are editing.
+- Everything in the repo is English: code, comments, docstrings, test output and commit
+  messages. The only Spanish lives in `README.es.md` and in the translation map inside
+  `static/i18n.js`.
 - Comments explain *why* (especially Blender quirks, e.g. Blender 5 filtering `file_format` by
   `media_type`), never *what*.
 - `static/index.html` cache-busts with `?v=N` on the CSS and JS: bump it when changing either.

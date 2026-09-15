@@ -1,4 +1,4 @@
-"""BlendQueue: servidor local (FastAPI) + punto de entrada.
+"""BlendQueue: local server (FastAPI) + entry point.
 
     python server.py [--port 8777] [--no-browser]
 """
@@ -51,15 +51,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="BlendQueue", lifespan=lifespan)
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
-MAX_SCRIPT = 200_000   # tope del código de un script (caracteres)
+MAX_SCRIPT = 200_000   # size cap for a script's code (characters)
 
 
 @app.middleware("http")
 async def only_local(request: Request, call_next):
-    """BlendQueue abre el disco local (listar carpetas, abrir el Explorador,
-    lanzar Blender). El servidor solo escucha en 127.0.0.1, pero eso no impide
-    que otra página del navegador le mande peticiones: se exige que el Host y
-    el Origin sean locales antes de aceptar algo que cambie estado."""
+    """BlendQueue touches the local disk (listing folders, opening Explorer,
+    launching Blender). The server only listens on 127.0.0.1, but that does not
+    stop another page in the browser from sending it requests: Host and Origin
+    must be local before anything that changes state is accepted."""
     host = (request.headers.get("host") or "").rsplit(":", 1)[0]
     if host and host not in LOCAL_HOSTS:
         return JSONResponse({"detail": "Local connections only"}, status_code=403)
@@ -70,7 +70,7 @@ async def only_local(request: Request, call_next):
     return await call_next(request)
 
 
-# ---------------------------------------------------------------- estáticos
+# ---------------------------------------------------------------- static files
 @app.get("/")
 def index():
     return FileResponse(str(config.STATIC_DIR / "index.html"),
@@ -80,7 +80,7 @@ def index():
 app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR)), name="static")
 
 
-# ---------------------------------------------------------------- estado
+# ---------------------------------------------------------------- state
 @app.get("/api/state")
 def api_state():
     snap = store.snapshot()
@@ -106,8 +106,8 @@ def api_state():
         "scripts": snap.get("scripts") or [],
         "log_tail": worker.tail(),
         "ffmpeg": bool(config.ffmpeg_path()),
-        # La UI descarga el catálogo de formatos aparte y solo lo vuelve a pedir
-        # cuando esta clave cambia (otra versión de Blender, otra instalación).
+        # The UI fetches the format catalog separately and only refetches it
+        # when this key changes (another Blender version, another install).
         "formats_key": str(caps.get("blender_version") or "") + ":" + str(len(caps.get("file_format") or [])),
         "now": time.time(),
     }
@@ -115,11 +115,11 @@ def api_state():
 
 @app.get("/api/formats")
 def api_formats():
-    """Formatos de salida que ofrece la UI, según lo que soporta este Blender."""
+    """Output formats the UI offers, according to what this Blender supports."""
     return formats.catalog(store.caps())
 
 
-# ---------------------------------------------------------------- biblioteca de scripts
+# ---------------------------------------------------------------- script library
 class ScriptBody(BaseModel):
     name: str | None = None
     code: str | None = None
@@ -158,13 +158,13 @@ def api_script_update(sid: str, body: ScriptBody):
 
 @app.delete("/api/scripts/{sid}")
 def api_script_delete(sid: str):
-    """Borra el script de la biblioteca; los trabajos que ya lo llevan conservan su copia."""
+    """Deletes the script from the library; jobs already carrying it keep their copy."""
     if not store.delete_script(sid):
         raise HTTPException(404, "Script not found")
     return {"ok": True}
 
 
-# ---------------------------------------------------------------- archivos
+# ---------------------------------------------------------------- files
 class AddFilesBody(BaseModel):
     paths: list[str]
 
@@ -236,7 +236,7 @@ def api_file_delete(fid: str):
     return {"ok": True}
 
 
-# ---------------------------------------------------------------- trabajos (cola)
+# ---------------------------------------------------------------- jobs (queue)
 class JobBody(BaseModel):
     file_id: str
     scene: str
@@ -245,7 +245,7 @@ class JobBody(BaseModel):
 
 
 def _clean_overrides(raw: dict | None) -> dict:
-    """Valida los overrides que llegan de la UI y descarta lo que no aplica."""
+    """Validates the overrides coming from the UI and drops what does not apply."""
     ov = dict(raw or {})
     out: dict = {}
     engine = str(ov.get("engine") or "").strip().upper()
@@ -268,9 +268,9 @@ def _clean_overrides(raw: dict | None) -> dict:
     if out_dir:
         out["output_dir"] = out_dir
 
-    # Script de Python. Al elegirlo de la biblioteca se guarda una COPIA del
-    # código en el trabajo: editar la biblioteca después no cambia lo que ya
-    # está en cola. Si la petición ya trae el código, se respeta tal cual.
+    # Python script. Picking one from the library stores a COPY of the code in
+    # the job: editing the library later does not change what is already queued.
+    # If the request already carries the code, it is kept as-is.
     sid = str(ov.get("script_id") or "").strip()
     code = ov.get("script")
     if code is None and sid:
@@ -325,8 +325,8 @@ def api_job_add(body: JobBody):
         "scene": body.scene,
         "frames": _clean_frames(body.frames, scene),
         "overrides": _clean_overrides(body.overrides),
-        # Formato guardado en el .blend: permite mostrar el formato efectivo de
-        # cada trabajo en la cola y detectar colas con formatos mezclados.
+        # Format saved in the .blend: lets the queue show each job's effective
+        # format and spot queues with mixed formats.
         "scene_format": scene.get("file_format"),
         "scene_container": scene.get("ffmpeg_container"),
     }
@@ -340,7 +340,7 @@ class JobPatchBody(BaseModel):
 
 @app.patch("/api/jobs/{jid}")
 def api_job_patch(jid: str, body: JobPatchBody):
-    """Edita un trabajo que aún está en cola (formato, salida, frames…)."""
+    """Edits a job that is still queued (format, output, frames...)."""
     job = store.get_job(jid)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -362,8 +362,8 @@ def api_job_patch(jid: str, body: JobPatchBody):
 
 
 class FormatBody(BaseModel):
-    job_ids: list[str] | None = None   # None = todos los trabajos en cola
-    format: str | None = None          # "" o None = volver al formato del .blend
+    job_ids: list[str] | None = None   # None = every queued job
+    format: str | None = None          # "" or None = back to the .blend's format
     color_depth: str | None = None
     color_mode: str | None = None
     quality: int | None = None
@@ -374,11 +374,11 @@ class FormatBody(BaseModel):
 
 @app.post("/api/jobs/format")
 def api_jobs_format(body: FormatBody):
-    """Aplica un formato de salida a varios trabajos en cola de una vez.
+    """Applies one output format to several queued jobs at once.
 
-    Resuelve el caso típico: se encolan archivos de distintos proyectos y uno
-    venía guardado en otro formato. Solo toca las claves de formato; el resto
-    de overrides (carpeta, motor, samples…) de cada trabajo se conserva.
+    Solves the usual case: you queue files from different projects and one was
+    saved with another format. Only the format keys are touched; every job keeps
+    the rest of its overrides (folder, engine, samples...).
     """
     patch = formats.normalize({k: getattr(body, k) for k in formats.FORMAT_KEYS})
     wanted = set(body.job_ids) if body.job_ids else None
@@ -397,13 +397,13 @@ def api_jobs_format(body: FormatBody):
 
 
 class JobScriptBody(BaseModel):
-    job_ids: list[str] | None = None   # None = todos los trabajos en cola
-    script_id: str | None = None       # "" o None = quitar el script
+    job_ids: list[str] | None = None   # None = every queued job
+    script_id: str | None = None       # "" or None = remove the script
 
 
 @app.post("/api/jobs/script")
 def api_jobs_script(body: JobScriptBody):
-    """Pone (o quita) un script a varios trabajos en cola de una vez."""
+    """Adds (or removes) a script on several queued jobs at once."""
     sid = (body.script_id or "").strip()
     patch = {}
     if sid:
@@ -527,7 +527,7 @@ def api_job_video(jid: str):
 
 @app.post("/api/jobs/{jid}/open")
 def api_job_open(jid: str):
-    """Abre la carpeta de salida del trabajo (seleccionando el primer frame existente)."""
+    """Opens the job's output folder (picking the first frame that exists)."""
     job = store.get_job(jid)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -548,7 +548,7 @@ def api_job_open(jid: str):
     return {"ok": True, "path": target_dir}
 
 
-# ---------------------------------------------------------------- abrir rutas
+# ---------------------------------------------------------------- opening paths
 class OpenBody(BaseModel):
     path: str
 
@@ -560,7 +560,7 @@ def api_open(body: OpenBody):
         raise HTTPException(404, "That path does not exist")
     try:
         if os.path.isdir(p):
-            os.startfile(p)  # noqa: S606 (app local)
+            os.startfile(p)  # noqa: S606 (local app)
         else:
             os.startfile(os.path.dirname(p) or p)
     except Exception as exc:
@@ -568,7 +568,7 @@ def api_open(body: OpenBody):
     return {"ok": True}
 
 
-# ---------------------------------------------------------------- explorador de archivos
+# ---------------------------------------------------------------- file browser
 @app.get("/api/fs/list")
 def api_fs_list(path: str = ""):
     path = (path or "").strip().strip('"')
@@ -615,7 +615,7 @@ def api_fs_list(path: str = ""):
     return {"path": path, "parent": parent, "entries": dirs + blends}
 
 
-# ---------------------------------------------------------------- ajustes
+# ---------------------------------------------------------------- settings
 class SettingsBody(BaseModel):
     blender_path: str | None = None
     notifications: bool | None = None
@@ -665,7 +665,7 @@ def api_queue_pause(body: PauseBody):
 
 @app.post("/api/shutdown")
 def api_shutdown():
-    """Detiene la cola (mata el render en curso) y apaga el servidor."""
+    """Stops the queue (kills the running render) and shuts the server down."""
     try:
         if worker and worker.current_job_id:
             worker.cancel(worker.current_job_id)
@@ -680,13 +680,13 @@ def api_shutdown():
         except Exception:
             pass
         time.sleep(3.0)
-        os._exit(0)  # último recurso si el apagado limpio no terminó
+        os._exit(0)  # last resort if the clean shutdown did not finish
 
     threading.Thread(target=_stop, daemon=True).start()
     return {"ok": True, "message": "BlendQueue is shutting down…"}
 
 
-# ---------------------------------------------------------------- entrada
+# ---------------------------------------------------------------- entry point
 _server_handle = None
 
 

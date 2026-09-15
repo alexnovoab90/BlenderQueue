@@ -1,4 +1,4 @@
-"""Carrera de inspección: corre Blender headless para leer metadatos de cada .blend."""
+"""Inspection lane: runs Blender headless to read each .blend's metadata."""
 from __future__ import annotations
 
 import json
@@ -87,7 +87,7 @@ class InspectorLane:
         if not report.get("ok", False):
             raise RuntimeError("Inspection failed: " + str(report.get("error")))
         report["inspect_seconds"] = round(dur, 1)
-        # Los formatos que ofrece la UI salen de los enums reales de este Blender.
+        # The formats the UI offers come from this Blender's real enums.
         self.store.set_caps(report.get("capabilities"))
 
         fields = {"status": "ready", "report": report, "inspected_at": time.time(),

@@ -1,19 +1,18 @@
-"""Catálogo de formatos de salida de Blender y validación de los overrides.
+"""Catalog of Blender output formats and validation of the per-job overrides.
 
-Blender guarda el formato de salida en ``scene.render.image_settings`` (más
-``scene.render.ffmpeg`` cuando el formato es video). BlendQueue permite
-sobreescribirlo por trabajo: así una cola con archivos heterogéneos —uno en
-PNG, otro en EXR multicapa, otro en video— se unifica sin abrir Blender ni
-tocar los .blend.
+Blender stores the output format in ``scene.render.image_settings`` (plus
+``scene.render.ffmpeg`` for video). BlendQueue can override it per job, so a
+queue holding mixed files -- one PNG, one multilayer EXR, one video -- gets
+unified without opening Blender or touching the .blend files.
 
-Este módulo es la única fuente de verdad sobre:
-  · qué formatos ofrece la interfaz y con qué opciones (profundidad, calidad…),
-  · qué extensión produce cada uno (para detectar las salidas del render),
-  · qué formatos son película (cambia el patrón ``-o`` y el preview).
+This module is the single source of truth for:
+  * which formats the interface offers and with which options (depth, quality...),
+  * which extension each one produces (used to find the render outputs),
+  * which formats are movies (changes the ``-o`` pattern and the preview).
 
-Los identificadores son los enums de Blender. Al inspeccionar un .blend se
-leen los enums reales de esa instalación y se usan para filtrar el catálogo
-(ver ``catalog``), de modo que la UI nunca ofrezca algo que ese Blender no tenga.
+The identifiers are Blender's own enums. Inspecting a .blend reads the real
+enums of that installation and they filter this catalog (see ``catalog``), so
+the UI never offers something the detected Blender does not have.
 """
 from __future__ import annotations
 
@@ -68,7 +67,7 @@ FORMATS: list[dict] = [
 BY_ID = {f["id"]: f for f in FORMATS}
 MOVIE_FORMATS = {f["id"] for f in FORMATS if f.get("movie")}
 
-# scene.render.ffmpeg.format -> contenedor y extensión resultante
+# scene.render.ffmpeg.format -> container and resulting extension
 FFMPEG_CONTAINERS: list[dict] = [
     {"id": "MPEG4", "label": "MPEG-4 (.mp4)", "ext": ".mp4"},
     {"id": "MKV", "label": "Matroska (.mkv)", "ext": ".mkv"},
@@ -123,7 +122,7 @@ COLOR_MODES: list[dict] = [
     {"id": "RGBA", "label": "RGBA (with alpha)"},
 ]
 
-# Claves de override que pertenecen al formato de salida.
+# Override keys that belong to the output format.
 FORMAT_KEYS = ("format", "color_depth", "color_mode", "quality",
                "exr_codec", "ffmpeg_container", "ffmpeg_codec")
 
@@ -142,7 +141,7 @@ def media_type(fmt: str | None) -> str | None:
 
 
 def extension(fmt: str | None, container: str | None = None) -> str | None:
-    """Extensión que Blender le pondrá al archivo con este formato."""
+    """Extension Blender will give the file with this format."""
     s = spec(fmt)
     if not s:
         return None
@@ -155,7 +154,7 @@ def extension(fmt: str | None, container: str | None = None) -> str | None:
 
 
 def label(fmt: str | None, container: str | None = None, depth: str | None = None) -> str:
-    """Etiqueta corta para la UI: 'OpenEXR multicapa 32', 'Video .mp4', 'PNG 16'."""
+    """Short label for the UI: 'OpenEXR multilayer 32', 'Video .mp4', 'PNG 16'."""
     s = spec(fmt)
     if not s:
         return fmt or "—"
@@ -176,8 +175,8 @@ def _clamp_int(value, lo: int, hi: int):
 
 
 def normalize(ov: dict | None) -> dict:
-    """Depura los overrides de formato: descarta valores inválidos o que no
-    aplican al formato elegido (p. ej. códec EXR con salida PNG)."""
+    """Cleans the format overrides: drops invalid values and values that do not
+    apply to the chosen format (e.g. an EXR codec with PNG output)."""
     ov = dict(ov or {})
     fmt = str(ov.get("format") or "").strip().upper() or None
     if fmt and fmt not in BY_ID:
@@ -236,7 +235,7 @@ def normalize(ov: dict | None) -> dict:
 
 
 def summary(ov: dict | None) -> str:
-    """Resumen legible del override de formato: 'OpenEXR multicapa 32 · ZIP'."""
+    """Readable summary of the format override: 'OpenEXR multilayer 32 - ZIP'."""
     ov = ov or {}
     fmt = ov.get("format")
     if not fmt:
@@ -267,10 +266,10 @@ def _ids(caps: dict | None, key: str) -> set:
 
 
 def catalog(caps: dict | None = None) -> dict:
-    """Catálogo para la UI, filtrado por lo que soporta el Blender detectado.
+    """Catalog for the UI, filtered by what the detected Blender supports.
 
-    ``caps`` viene del reporte de inspección (enums reales de esa instalación);
-    sin ``caps`` se devuelve el catálogo completo.
+    ``caps`` comes from the inspection report (the real enums of that install);
+    without ``caps`` the full catalog is returned.
     """
     avail = _ids(caps, "file_format")
     fmts = []

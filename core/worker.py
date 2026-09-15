@@ -1,4 +1,4 @@
-"""Worker secuencial: toma trabajos de la cola y los renderiza con Blender headless."""
+"""Sequential worker: takes jobs off the queue and renders them with headless Blender."""
 from __future__ import annotations
 
 import os
@@ -39,9 +39,9 @@ class RenderWorker:
             self.store.update_job(job_id, status="canceled", finished_at=time.time(),
                                   error="Canceled before starting")
         elif status == "running":
-            # Solo se marca para cancelar lo que está corriendo: hacerlo con un
-            # trabajo ya terminado dejaba la marca pegada y el siguiente
-            # reintento terminaba como "cancelado" aunque hubiera renderizado.
+            # Only what is actually running gets flagged: doing it on a finished
+            # job left the flag stuck and the next retry ended up "canceled" even
+            # though it had rendered fine.
             self._cancel_ids.add(job_id)
             with self._lock:
                 if self.current_job_id == job_id and self._proc is not None:
@@ -269,8 +269,8 @@ class RenderWorker:
         except Exception:
             return "Check the job log."
         lines = [l for l in data.splitlines() if l.strip() and not renderer.is_noise(l)]
-        # Si reventó un script de Python, lo útil es la excepción: el final del
-        # log solo trae el banner de Blender y "Blender quit".
+        # If a Python script blew up, the useful part is the exception: the end
+        # of the log only holds Blender's banner and "Blender quit".
         for i in range(len(lines) - 1, -1, -1):
             if lines[i].startswith("Traceback (most recent call last)"):
                 for line in lines[i + 1:]:
@@ -282,10 +282,10 @@ class RenderWorker:
 
     @staticmethod
     def _scan_outputs(job: dict, scene_report: dict | None, started: float) -> list:
-        """Salidas del render cuando Blender no las anunció con 'Saved:' (video).
+        """Render outputs when Blender did not announce them with 'Saved:' (video).
 
-        Se limita a archivos escritos durante este trabajo y, cuando se conoce,
-        a la extensión y al prefijo que le corresponden.
+        Limited to files written during this job and, when known, to the matching
+        extension and filename prefix.
         """
         ov = job.get("overrides") or {}
         out_dir = (ov.get("output_dir") or "").strip()

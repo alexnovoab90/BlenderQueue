@@ -1,4 +1,4 @@
-"""Comandos, parseo de progreso y previews de video para los renders de Blender."""
+"""Command building, progress parsing and video previews for Blender renders."""
 from __future__ import annotations
 
 import os
@@ -26,14 +26,14 @@ def sanitize(name: str) -> str:
 
 
 def resolve_relative(raw: str, blend_path: str) -> str:
-    """Resuelve rutas '//...' de Blender contra la carpeta del .blend."""
+    """Resolves Blender's '//...' paths against the .blend's folder."""
     if raw.startswith("//"):
         return os.path.normpath(os.path.join(os.path.dirname(blend_path), raw[2:]))
     return raw
 
 
 def effective_format(job: dict, scene_report: dict | None) -> str | None:
-    """Formato con el que se va a escribir: el override si existe, si no el del .blend."""
+    """Format the job will write with: the override if set, else the .blend's own."""
     ov = job.get("overrides") or {}
     return ov.get("format") or (scene_report or {}).get("file_format")
 
@@ -46,7 +46,7 @@ def effective_is_movie(job: dict, scene_report: dict | None) -> bool:
 
 
 def expected_extension(job: dict, scene_report: dict | None) -> str | None:
-    """Extensión esperada de los archivos de salida (para localizarlos después)."""
+    """Expected extension of the output files (used to find them afterwards)."""
     ov = job.get("overrides") or {}
     fmt = effective_format(job, scene_report)
     container = ov.get("ffmpeg_container") or (scene_report or {}).get("ffmpeg_container")
@@ -59,11 +59,11 @@ def output_stem(job: dict) -> str:
 
 
 def output_pattern(job: dict, scene_report: dict | None) -> str | None:
-    """Patrón -o para Blender.
+    """-o pattern for Blender.
 
-    Sin override de carpeta: se respeta tal cual la salida guardada en el .blend.
-    Con override: carpeta elegida + '<blend>_<escena>_####' (sin '####' si la
-    salida es una película, porque Blender escribe un único archivo).
+    Without a folder override the output saved in the .blend is used as-is.
+    With one: chosen folder + '<blend>_<scene>_####' (no '####' when the output
+    is a movie, because Blender writes a single file).
     """
     ov = job.get("overrides") or {}
     out_dir = (ov.get("output_dir") or "").strip()
@@ -103,7 +103,7 @@ def _device_code(device: str) -> str:
 
 
 def _guard(stmt: str, what: str) -> list:
-    """Envuelve una asignación para que un valor no soportado no tumbe el render."""
+    """Wraps an assignment so an unsupported value cannot kill the render."""
     return ["try:",
             "    " + stmt,
             "except Exception as _e:",
@@ -111,7 +111,7 @@ def _guard(stmt: str, what: str) -> list:
 
 
 def format_code(ov: dict) -> list:
-    """Líneas Python que aplican el override de formato de salida en Blender."""
+    """Python lines that apply the output format override inside Blender."""
     fmt = ov.get("format")
     if not fmt:
         return []
@@ -119,14 +119,14 @@ def format_code(ov: dict) -> list:
     lines = ["_im = sc.render.image_settings"]
     media = spec.get("media")
     if media:
-        # Blender 5 filtra file_format según media_type; en 4.x este atributo no existe.
+        # Blender 5 filters file_format by media_type; 4.x has no such attribute.
         lines += ["try:",
                   "    if hasattr(_im, 'media_type'):",
                   f"        _im.media_type = {media!r}",
                   "except Exception:",
                   "    pass"]
     lines += _guard(f"_im.file_format = {fmt!r}", f"format {fmt}")
-    # Con formato forzado la extensión la pone Blender, si no el archivo miente.
+    # With a forced format Blender must add the extension, or the file lies.
     lines += _guard("sc.render.use_file_extension = True", "use_file_extension")
     if ov.get("color_mode"):
         lines += _guard(f"_im.color_mode = {ov['color_mode']!r}", "color mode")
@@ -148,7 +148,7 @@ def format_code(ov: dict) -> list:
 
 
 def engine_code(engine: str) -> list:
-    """Cambia el motor tolerando el rename de EEVEE entre versiones de Blender."""
+    """Switches the engine, tolerating the EEVEE rename across Blender versions."""
     alt = {"BLENDER_EEVEE": "BLENDER_EEVEE_NEXT",
            "BLENDER_EEVEE_NEXT": "BLENDER_EEVEE"}.get(engine)
     lines = ["try:", f"    sc.render.engine = {engine!r}", "except Exception as _e:"]
@@ -201,11 +201,11 @@ print("[blendqueue] script:", {name!r})
 
 
 def write_job_script(job: dict, dest) -> str | None:
-    """Escribe el script del trabajo a un .py que Blender ejecuta con --python.
+    """Writes the job's script to a .py that Blender runs with --python.
 
-    Va en un archivo aparte y no dentro de --python-expr para que el codigo del
-    usuario no dependa de como se escapa la linea de comandos (acentos, comillas,
-    saltos) y para que el traceback apunte a lineas reales.
+    A separate file instead of --python-expr so the user's code does not depend
+    on command line escaping (accents, quotes, newlines) and so tracebacks point
+    at real line numbers.
     """
     code = (job.get("overrides") or {}).get("script") or ""
     if not code.strip():
@@ -222,13 +222,13 @@ def build_cmd(blender: str, job: dict, scene_report: dict | None,
               script_path: str | None = None) -> list:
     args = [blender, "-b", job["file_path"], "-S", job["scene"]]
     if script_path:
-        # Sin esto Blender imprime el traceback y renderiza igual: el trabajo debe fallar.
+        # Without this Blender prints the traceback and renders anyway: the job must fail.
         args += ["--python-exit-code", "1"]
     expr = override_expr(job)
     if expr:
         args += ["--python-expr", expr]
     if script_path:
-        # Despues de los overrides: el script del usuario puede pisar cualquiera.
+        # After the overrides: the user script may override any of them.
         args += ["--python", script_path]
     pat = output_pattern(job, scene_report)
     if pat:
@@ -243,7 +243,7 @@ def build_cmd(blender: str, job: dict, scene_report: dict | None,
 
 
 def ensure_output_dir(job: dict, scene_report: dict | None) -> None:
-    """Crea la carpeta de salida si no existe (override local o la del .blend)."""
+    """Creates the output folder if missing (the override, or the .blend's)."""
     ov = job.get("overrides") or {}
     out_dir = (ov.get("output_dir") or "").strip()
     if out_dir:
@@ -303,13 +303,13 @@ class ProgressParser:
         return changed
 
 
-# Extensiones que Blender puede producir como película (contenedores FFmpeg + AVI).
+# Extensions Blender can produce as a movie (FFmpeg containers + AVI).
 VIDEO_EXTS = tuple(sorted({c["ext"] for c in formats.FFMPEG_CONTAINERS} | {".avi"}))
 
-# Formatos que el navegador no sabe mostrar en un <img>: el preview se arma con ffmpeg.
+# Formats a browser cannot show in an <img>: their preview is built with ffmpeg.
 HDR_EXTS = (".exr", ".hdr", ".dpx", ".cin")
 
-# Formatos que ffmpeg no puede leer: se avisa en vez de intentarlo y fallar.
+# Formats ffmpeg cannot read: say so instead of trying and failing.
 NO_PREVIEW = {"OPEN_EXR_MULTILAYER": "ffmpeg cannot read multilayer EXR"}
 
 
@@ -318,7 +318,7 @@ def preview_block_reason(fmt: str | None) -> str | None:
 
 
 def remux_preview(src: str, dest: str, log=print) -> str | None:
-    """Convierte la película renderizada (mkv/avi/...) en un MP4 reproducible en el navegador."""
+    """Converts the rendered movie (mkv/avi/...) into a browser-playable MP4."""
     ff = config.ffmpeg_path()
     if not ff or not os.path.exists(src):
         return None
@@ -339,7 +339,7 @@ def remux_preview(src: str, dest: str, log=print) -> str | None:
 
 
 def build_preview_video(outputs: list, fps: float, dest: str, log=print) -> str | None:
-    """Arma un MP4 de preview a partir de la secuencia renderizada (ffmpeg)."""
+    """Builds a preview MP4 from the rendered sequence (ffmpeg)."""
     ff = config.ffmpeg_path()
     if not ff:
         log("ffmpeg not available: skipping the preview video")
@@ -380,8 +380,8 @@ def build_preview_video(outputs: list, fps: float, dest: str, log=print) -> str 
     out_args = ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", dest]
 
-    # EXR guarda color lineal: sin la conversión el preview sale lavado. Si el
-    # ffmpeg instalado no acepta la opción, se reintenta sin ella.
+    # EXR stores linear color: without the conversion the preview looks washed
+    # out. If the installed ffmpeg rejects the option, retry without it.
     attempts = [[]]
     if os.path.splitext(files[0])[1].lower() == ".exr":
         attempts.insert(0, ["-apply_trc", "iec61966_2_1"])

@@ -1,18 +1,19 @@
 "use strict";
 
-/* Idiomas de la interfaz.
+/* Interface languages.
  *
- * El texto del código está en inglés (idioma por defecto) y aquí solo vive el
- * mapa inglés -> español: así se lee el código sin claves indirectas y añadir
- * otro idioma es copiar este objeto. Lo que no esté traducido cae al inglés.
+ * The text in the code is English (the default language) and this file only
+ * holds the English -> Spanish map: the code reads without indirect keys and
+ * adding another language is copying this object. Anything untranslated falls
+ * back to English.
  *
- * Los mensajes del servidor (errores de la API, líneas de error de un trabajo)
- * salen siempre en inglés: son pocos y muchos llevan datos interpolados.
+ * Server messages (API errors, a job's error line) are always English: there
+ * are few of them and most carry interpolated data.
  */
 const LANGS = { en: "English", es: "Español" };
 
 const ES = {
-  // ---- cabecera ----
+  // ---- header ----
   "BlendQueue — local render queue for Blender": "BlendQueue — cola local de renders Blender",
   "local render queue · headless Blender": "cola local de renders · Blender headless",
   "Pause queue": "Pausar cola",
@@ -25,7 +26,7 @@ const ES = {
   "Interface language": "Idioma de la interfaz",
   "Blender: not found": "Blender: no encontrado",
 
-  // ---- agregar archivos ----
+  // ---- adding files ----
   "Drop your .blend files here": "Arrastra aquí tus .blend",
   "or": "o",
   "choose files…": "elegir archivos…",
@@ -39,7 +40,7 @@ const ES = {
   "Files added; inspecting…": "Archivos agregados; inspeccionando…",
   "Network error while uploading": "Error de red al subir",
 
-  // ---- archivos y escenas ----
+  // ---- files and scenes ----
   "Files": "Archivos",
   "No files yet. Drop a .blend above or use “Pick a path on this computer…”.":
     "Aún no hay archivos. Arrastra un .blend arriba o usa “Seleccionar ruta del equipo…”.",
@@ -92,7 +93,7 @@ const ES = {
   "BW (grayscale)": "BW (gris)",
   "RGBA (with alpha)": "RGBA (con alfa)",
 
-  // ---- cola ----
+  // ---- queue ----
   "Render queue": "Cola de renders",
   "Output format…": "Formato de salida…",
   "Change the output format of the queued jobs": "Cambiar el formato de salida de los trabajos en cola",
@@ -121,7 +122,7 @@ const ES = {
   "Queued: ": "Encolado: ",
   "The job is no longer in the queue": "El trabajo ya no está en la cola",
 
-  // ---- detalles de un trabajo ----
+  // ---- job details ----
   "No output data.": "Sin datos de salida.",
   "Nothing to show yet.": "Aún sin salidas para mostrar.",
   "Open output folder": "Abrir carpeta de salida",
@@ -133,7 +134,7 @@ const ES = {
   "Frame": "Frame",
   "use ← → to browse": "usa ← → para navegar",
 
-  // ---- modal de formato ----
+  // ---- format modal ----
   "Output format": "Formato de salida",
   "Job format": "Formato del trabajo",
   "Queue format": "Formato de la cola",
@@ -145,7 +146,7 @@ const ES = {
   "Format updated": "Formato actualizado",
   "No queued jobs": "No había trabajos en cola",
 
-  // ---- modal de scripts ----
+  // ---- script modal ----
   "Python scripts": "Scripts de Python",
   "Choose script": "Elegir script",
   "They are stored in the app and will still be here next time.":
@@ -173,7 +174,7 @@ const ES = {
   "Script applied to the job": "Script aplicado al trabajo",
   "Script removed from the job": "Script quitado del trabajo",
 
-  // ---- explorador de archivos ----
+  // ---- file browser ----
   "Select .blend files": "Seleccionar archivos .blend",
   "Choose output folder": "Elegir carpeta de salida",
   "↑ Up": "↑ Subir",
@@ -190,7 +191,7 @@ const ES = {
   "(empty folder)": "(carpeta vacía)",
   "Folder added; inspecting the .blend files…": "Carpeta agregada; inspeccionando los .blend…",
 
-  // ---- ajustes ----
+  // ---- settings ----
   "Path to blender.exe": "Ruta de blender.exe",
   "Check": "Verificar",
   "Desktop notification when each render finishes": "Notificación de escritorio al terminar cada render",
@@ -203,13 +204,13 @@ const ES = {
   "Test notification sent": "Notificación de prueba enviada",
   "Not found": "No encontrado",
 
-  // ---- apagado ----
+  // ---- shutdown ----
   "Quit BlendQueue?\nThe queue stops and the server shuts down (its window closes).":
     "¿Cerrar BlendQueue?\nSe detiene la cola y se apaga el servidor (la ventana se cierra).",
   "BlendQueue is shutting down… you can close this tab now.":
     "BlendQueue se está cerrando… ya puedes cerrar esta pestaña.",
 
-  // ---- catálogo de formatos (lo manda el servidor) ----
+  // ---- format catalog (sent by the server) ----
   "OpenEXR multilayer": "OpenEXR multicapa",
   "Video (FFmpeg)": "Video (FFmpeg)",
   "Uncompressed Targa": "Targa sin comprimir",
@@ -228,7 +229,7 @@ const ES = {
   "PNG (alpha)": "PNG (con alfa)",
   "No video": "Sin video",
 
-  // ---- plurales y frases con datos ----
+  // ---- plurals and phrases with data ----
   "{n} file(s)": "{n} archivo(s)",
   "saved with Blender {v}": "guardado con Blender {v}",
   "inspection {s} s": "inspección {s} s",
@@ -275,22 +276,22 @@ let LANG = "en";
 try {
   const saved = localStorage.getItem(LANG_KEY);
   if (saved && DICTS[saved] !== undefined) LANG = saved;
-} catch (e) { /* navegador sin almacenamiento: inglés */ }
+} catch (e) { /* browser without storage: English */ }
 
-/** Traduce un texto en inglés al idioma activo (si no está, lo deja igual). */
+/** Translates an English string into the active language (unchanged if missing). */
 function t(text) {
   const d = DICTS[LANG];
   return (d && d[text]) || text;
 }
 
-/** Como t() pero rellenando {marcadores}: tf("{n} file(s)", { n: 3 }). */
+/** Like t() but filling {placeholders}: tf("{n} file(s)", { n: 3 }). */
 function tf(text, vars) {
   let out = t(text);
   for (const [k, v] of Object.entries(vars || {})) out = out.split("{" + k + "}").join(String(v));
   return out;
 }
 
-/** Aplica el idioma al HTML estático (data-i18n, data-i18n-title, data-i18n-ph). */
+/** Applies the language to the static HTML (data-i18n, data-i18n-title, data-i18n-ph). */
 function applyLang() {
   document.documentElement.lang = LANG;
   document.title = t("BlendQueue — local render queue for Blender");
@@ -311,6 +312,6 @@ function applyLang() {
 function setLang(lang) {
   if (DICTS[lang] === undefined) return;
   LANG = lang;
-  try { localStorage.setItem(LANG_KEY, lang); } catch (e) { /* da igual */ }
+  try { localStorage.setItem(LANG_KEY, lang); } catch (e) { /* not important */ }
   applyLang();
 }

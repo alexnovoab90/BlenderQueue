@@ -1,4 +1,4 @@
-"""Estado persistente de BlendQueue: archivos, trabajos y ajustes (JSON atómico)."""
+"""BlendQueue's persistent state: files, jobs and settings (atomic JSON)."""
 from __future__ import annotations
 
 import copy
@@ -34,7 +34,7 @@ class Store:
                       "scripts": [], "caps": {}}
         self.load()
 
-    # ---------------- persistencia ----------------
+    # ---------------- persistence ----------------
     def load(self) -> None:
         with self._lock:
             try:
@@ -52,7 +52,7 @@ class Store:
                     if isinstance(data.get("caps"), dict):
                         self._data["caps"] = data["caps"]
             except Exception:
-                pass  # estado corrupto: se parte de cero (los logs quedan en data/logs)
+                pass  # corrupt state: start fresh (the logs stay in data/logs)
             self._recover()
             self.save()
 
@@ -76,7 +76,7 @@ class Store:
                 json.dump(self._data, fh, indent=1, ensure_ascii=False)
             os.replace(tmp, self._path)
 
-    # ---------------- consultas ----------------
+    # ---------------- queries ----------------
     def snapshot(self) -> dict:
         with self._lock:
             return copy.deepcopy(self._data)
@@ -85,7 +85,7 @@ class Store:
         with self._lock:
             return dict(self._data["settings"])
 
-    # ---------------- biblioteca de scripts ----------------
+    # ---------------- script library ----------------
     def scripts(self) -> list:
         with self._lock:
             return copy.deepcopy(self._data.get("scripts") or [])
@@ -126,7 +126,7 @@ class Store:
         return False
 
     def caps(self) -> dict:
-        """Formatos/enums que soporta el Blender detectado (última inspección OK)."""
+        """Formats/enums the detected Blender supports (last successful inspection)."""
         with self._lock:
             return copy.deepcopy(self._data.get("caps") or {})
 
@@ -161,7 +161,7 @@ class Store:
                     return copy.deepcopy(j)
         return None
 
-    # ---------------- mutaciones ----------------
+    # ---------------- mutations ----------------
     def update_settings(self, patch: dict) -> dict:
         with self._lock:
             self._data["settings"].update(patch)
@@ -240,11 +240,11 @@ class Store:
         return False
 
     def move_job(self, jid: str, direction: int) -> bool:
-        """Mueve un trabajo encolado una posición arriba (-1) o abajo (+1).
+        """Moves a queued job one position up (-1) or down (+1).
 
-        Salta los trabajos que ya no están en cola (listos, con error…), que
-        pueden quedar intercalados: lo que importa es el orden relativo entre
-        los encolados, que es el que consume el worker.
+        Skips jobs that are no longer queued (done, errored...), which can sit
+        in between: what matters is the relative order of the queued ones, which
+        is what the worker consumes.
         """
         with self._lock:
             jobs = self._data["jobs"]
