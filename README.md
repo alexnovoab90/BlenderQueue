@@ -28,13 +28,29 @@ one job at a time so Blender never fights itself for the GPU.
 
 | | |
 |---|---|
-| OS | Windows 10/11 — desktop toasts and "open folder" use Windows APIs |
+| OS | Windows 10/11, macOS or Linux — see [Platform support](#platform-support) |
 | Blender | 3.x, 4.x or 5.x (auto-detected: installer, Steam, `PATH`, or `BLENDQUEUE_BLENDER`) |
-| Python | 3.10+ (`run.bat` creates the virtualenv for you) |
+| Python | 3.10+ (`run.bat` / `run.sh` creates the virtualenv for you) |
 | ffmpeg | optional, on `PATH` — only needed for MP4 previews |
 
-The core (inspection, queue, rendering) is plain Python and would port to Linux/macOS by
-replacing three Windows-specific bits: `os.startfile`, `taskkill` and the toast notifier.
+## Platform support
+
+Everything OS-specific lives in one file, `core/system.py`: opening a folder, killing a render
+together with its children, where Blender is installed and the roots of the file browser.
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| Queue, render, previews, scripts | yes | yes | yes |
+| Open the output folder | Explorer | `open` | `xdg-open` |
+| Desktop notification | toast | `osascript` | `notify-send` |
+| Launcher | `run.bat` | `./run.sh` | `./run.sh` |
+
+**Verified on Windows 11** (full smoke suite) **and on Linux** (Ubuntu under WSL: browser roots,
+Blender lookup, killing a render with its children, and graceful degradation without a desktop).
+**macOS is written but untested** — if you run it there, reports are welcome.
+
+Without a desktop session the two integration features return a clear message instead of failing,
+so BlendQueue still renders on a headless box.
 
 ## Install and run
 
@@ -42,14 +58,19 @@ replacing three Windows-specific bits: `os.startfile`, `taskkill` and the toast 
 git clone https://github.com/alexnovoab90/BlenderQueue.git
 ```
 
-Then double-click **`run.bat`**. It creates `.venv` (with [uv](https://github.com/astral-sh/uv)
-if available, otherwise `pip`), installs the dependencies and opens
-<http://127.0.0.1:8777>. If the server is already running it just opens the browser.
+Then double-click **`run.bat`** (Windows) or run **`./run.sh`** (macOS and Linux). Either one
+creates `.venv` (with [uv](https://github.com/astral-sh/uv) if available, otherwise `pip`),
+installs the dependencies and opens <http://127.0.0.1:8777>. If the server is already running it
+just opens the browser.
 
 Other port:
 
 ```bat
-.venv\Scripts\python.exe server.py --port 8888 --no-browser
+.venv\Scripts\python.exe server.py --port 8888 --no-browser    :: Windows
+```
+
+```bash
+.venv/bin/python server.py --port 8888 --no-browser            # macOS and Linux
 ```
 
 ## Adding files
@@ -141,12 +162,13 @@ core/inspector.py               inspection lane: runs Blender headless per .blen
 core/worker.py                  sequential render worker: spawn, progress, previews, notify
 core/renderer.py                command building, override codegen, progress parsing, ffmpeg
 core/formats.py                 output format catalog and override validation
-core/notifier.py                Windows toast notifications
+core/system.py                  everything OS-specific: open folder, kill tree, Blender lookup
+core/notifier.py                desktop notifications (toast / osascript / notify-send)
 blender_side/inspect_blend.py   runs INSIDE Blender, reports scenes and capabilities as JSON
 static/                         web interface (no build step)
 static/i18n.js                  interface languages (English in the code + a Spanish map)
 tests/                          smoke tests and .blend generator
-run.bat                         launcher: creates the venv if missing and serves the app
+run.bat, run.sh                 launchers: create the venv if missing and serve the app
 data/                           state, per-job logs and scripts, uploads, previews (git-ignored)
 ```
 
@@ -178,7 +200,9 @@ Modes: `quick` (EEVEE sequence), `multi` (scene selection via `-S`), `cycles` (G
 - **Blender not found** → Settings → path to `blender.exe`, or set `BLENDQUEUE_BLENDER`.
 - **Pink textures / missing files** → add the `.blend` *by path* instead of dragging it, or pack
   the textures. The inspection report counts missing external files.
-- **Port busy** → `run.bat` detects a running instance and just opens the browser.
+- **Port busy** → the launcher detects a running instance and just opens the browser.
+- **"This system cannot open a file manager" (Linux)** → install `xdg-utils`, or use the path
+  shown in the job. Same idea for notifications: they need `notify-send` (`libnotify-bin`).
 - **Closing the server window stops the queue** → in-flight jobs are marked as interrupted and
   can be retried. Prefer the ⏻ button in the header for a clean shutdown.
 

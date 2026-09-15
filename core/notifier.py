@@ -1,16 +1,37 @@
-"""Desktop notifications (Windows toast) for BlendQueue."""
+"""Desktop notifications for BlendQueue (Windows toast, macOS and Linux)."""
 from __future__ import annotations
 
+import json
 import subprocess
 
-from . import config
+from . import system
 
 
 def notify(title: str, message: str) -> bool:
-    """Shows a desktop toast. winotify first; PowerShell if that fails."""
-    if _winotify(title, message):
-        return True
-    return _powershell(title, message)
+    """Shows a desktop notification. False when there is no desktop to show it on."""
+    if system.IS_WINDOWS:
+        return _winotify(title, message) or _powershell(title, message)
+    if system.IS_MAC:
+        return _osascript(title, message)
+    return _notify_send(title, message)
+
+
+def _osascript(title: str, message: str) -> bool:
+    # json.dumps gives a quoted, escaped literal that AppleScript accepts as-is.
+    script = "display notification {} with title {}".format(json.dumps(message), json.dumps(title))
+    try:
+        return subprocess.run(["osascript", "-e", script], capture_output=True,
+                              timeout=25).returncode == 0
+    except Exception:
+        return False
+
+
+def _notify_send(title: str, message: str) -> bool:
+    try:
+        return subprocess.run(["notify-send", "--app-name=BlendQueue", title, message],
+                              capture_output=True, timeout=25).returncode == 0
+    except Exception:
+        return False        # no notify-send (headless box): renders still run
 
 
 def _winotify(title: str, message: str) -> bool:
@@ -40,7 +61,7 @@ def _powershell(title: str, message: str) -> bool:
     )
     try:
         subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=25,
-                       creationflags=config.CREATE_NO_WINDOW, capture_output=True)
+                       capture_output=True, **system.popen_kwargs())
         return True
     except Exception:
         return False

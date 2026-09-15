@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import config, formats, notifier
+from core import config, formats, notifier, system
 from core.inspector import InspectorLane
 from core.store import Store
 from core.worker import RenderWorker
@@ -106,6 +106,7 @@ def api_state():
         "scripts": snap.get("scripts") or [],
         "log_tail": worker.tail(),
         "ffmpeg": bool(config.ffmpeg_path()),
+        "platform": system.PLATFORM,
         # The UI fetches the format catalog separately and only refetches it
         # when this key changes (another Blender version, another install).
         "formats_key": str(caps.get("blender_version") or "") + ":" + str(len(caps.get("file_format") or [])),
@@ -201,7 +202,7 @@ def api_files_add(body: AddFilesBody):
 async def api_files_upload(files: list[UploadFile] = FastAPIFile(...)):
     added = []
     for uf in files:
-        name = os.path.basename(uf.filename or "archivo.blend")
+        name = os.path.basename(uf.filename or "file.blend")
         if not name.lower().endswith(".blend"):
             continue
         dest = config.UPLOADS_DIR / name
@@ -541,10 +542,8 @@ def api_job_open(jid: str):
             target_dir = ov_dir
     if not target_dir or not os.path.isdir(target_dir):
         raise HTTPException(404, "No output folder available")
-    try:
-        os.startfile(target_dir)
-    except Exception as exc:
-        raise HTTPException(500, str(exc))
+    if not system.open_folder(target_dir):
+        raise HTTPException(501, "This system cannot open a file manager")
     return {"ok": True, "path": target_dir}
 
 
@@ -558,13 +557,9 @@ def api_open(body: OpenBody):
     p = (body.path or "").strip()
     if not os.path.exists(p):
         raise HTTPException(404, "That path does not exist")
-    try:
-        if os.path.isdir(p):
-            os.startfile(p)  # noqa: S606 (local app)
-        else:
-            os.startfile(os.path.dirname(p) or p)
-    except Exception as exc:
-        raise HTTPException(500, str(exc))
+    folder = p if os.path.isdir(p) else (os.path.dirname(p) or p)
+    if not system.open_folder(folder):
+        raise HTTPException(501, "This system cannot open a file manager")
     return {"ok": True}
 
 
@@ -572,20 +567,8 @@ def api_open(body: OpenBody):
 @app.get("/api/fs/list")
 def api_fs_list(path: str = ""):
     path = (path or "").strip().strip('"')
-    home = os.path.expanduser("~")
     if not path:
-        drives = []
-        for letter in "CDEFGHIJKLMNOPQRSTUVWXYZAB":
-            root = f"{letter}:\\"
-            if os.path.exists(root):
-                drives.append({"name": root, "path": root, "type": "drive"})
-        favs = []
-        for label, sub in (("Home", ""), ("Desktop", "Desktop"), ("Downloads", "Downloads"),
-                           ("Developer", "Developer"), ("Videos", "Videos")):
-            p = os.path.join(home, sub) if sub else home
-            if os.path.isdir(p):
-                favs.append({"name": label, "path": p, "type": "dir"})
-        return {"path": "", "parent": None, "entries": drives + favs}
+        return {"path": "", "parent": None, "entries": system.fs_roots()}
 
     path = os.path.abspath(path)
     if not os.path.isdir(path):
@@ -628,7 +611,7 @@ def api_settings(body: SettingsBody):
     if body.blender_path is not None:
         bp = body.blender_path.strip()
         if bp and not os.path.exists(bp):
-            raise HTTPException(400, "That blender.exe path does not exist")
+            raise HTTPException(400, "That Blender path does not exist")
         patch["blender_path"] = bp
     if body.notifications is not None:
         patch["notifications"] = bool(body.notifications)

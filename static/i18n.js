@@ -111,7 +111,7 @@ const ES = {
   "Retry": "Reintentar",
   "Details": "Detalles",
   "📂 Open folder": "📂 Abrir carpeta",
-  "Open the output folder in Explorer": "Abrir la carpeta de salida en el Explorador",
+  "Open the output folder in your file manager": "Abrir la carpeta de salida en el explorador de archivos",
   "🎞 Format": "🎞 Formato",
   "Change the output format of this job": "Cambiar el formato de salida de este trabajo",
   "⚙ Script": "⚙ Script",
@@ -192,7 +192,7 @@ const ES = {
   "Folder added; inspecting the .blend files…": "Carpeta agregada; inspeccionando los .blend…",
 
   // ---- settings ----
-  "Path to blender.exe": "Ruta de blender.exe",
+  "Path to Blender": "Ruta de Blender",
   "Check": "Verificar",
   "Desktop notification when each render finishes": "Notificación de escritorio al terminar cada render",
   "Build an MP4 preview video of each sequence": "Generar video MP4 de preview de cada secuencia",

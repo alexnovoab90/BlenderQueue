@@ -8,7 +8,7 @@ import subprocess
 import threading
 import time
 
-from . import config
+from . import config, system
 
 
 class InspectorLane:
@@ -61,7 +61,7 @@ class InspectorLane:
 
         blender = self._blender()
         if not blender:
-            raise RuntimeError("blender.exe not found. Set the path in Settings.")
+            raise RuntimeError("Blender not found. Set the path in Settings.")
 
         script = config.BLENDER_SIDE_DIR / "inspect_blend.py"
         out_json = config.INSPECT_DIR / f"{fid}.json"
@@ -75,7 +75,7 @@ class InspectorLane:
             logf.write("CMD: " + subprocess.list2cmdline(cmd) + "\n\n")
             logf.flush()
             proc = subprocess.run(cmd, stdout=logf, stderr=subprocess.STDOUT, timeout=1800,
-                                  creationflags=config.CREATE_NO_WINDOW)
+                                  **system.popen_kwargs())
         dur = time.time() - started
 
         if not out_json.exists():

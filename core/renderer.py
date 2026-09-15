@@ -5,7 +5,7 @@ import os
 import re
 import subprocess
 
-from . import config, formats
+from . import config, formats, system
 
 FRA_RE = re.compile(r"Fra:(\d+)")
 SAMPLE_RE = re.compile(r"Sample (\d+)/(\d+)")
@@ -328,7 +328,7 @@ def remux_preview(src: str, dest: str, log=print) -> str | None:
             "-c:a", "aac", "-b:a", "160k", dest]
     try:
         proc = subprocess.run(args, capture_output=True, text=True, timeout=1800,
-                              creationflags=config.CREATE_NO_WINDOW)
+                              **system.popen_kwargs())
     except Exception as exc:
         log(f"ffmpeg (movie) failed: {exc}")
         return None
@@ -390,7 +390,7 @@ def build_preview_video(outputs: list, fps: float, dest: str, log=print) -> str 
             args = [ff, "-y", "-hide_banner", "-loglevel", "error"] + extra + input_args + out_args
             try:
                 proc = subprocess.run(args, capture_output=True, text=True, timeout=1800,
-                                      creationflags=config.CREATE_NO_WINDOW)
+                                      **system.popen_kwargs())
             except Exception as exc:
                 log(f"ffmpeg failed: {exc}")
                 return None

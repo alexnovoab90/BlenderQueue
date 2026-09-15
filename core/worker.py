@@ -7,7 +7,7 @@ import threading
 import time
 from collections import deque
 
-from . import config, notifier, renderer
+from . import config, notifier, renderer, system
 
 
 class RenderWorker:
@@ -70,15 +70,7 @@ class RenderWorker:
 
     @staticmethod
     def _kill(proc) -> None:
-        try:
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                           capture_output=True, timeout=30,
-                           creationflags=config.CREATE_NO_WINDOW)
-        except Exception:
-            try:
-                proc.terminate()
-            except Exception:
-                pass
+        system.kill_process_tree(proc)
 
     def status(self) -> dict:
         return {"paused": self.paused, "current_job_id": self.current_job_id}
@@ -125,7 +117,7 @@ class RenderWorker:
             blender = (settings.get("blender_path") or "").strip() or None
             blender = blender or config.find_blender()
             if not blender or not os.path.exists(blender):
-                raise RuntimeError("blender.exe not found. Set the path in Settings.")
+                raise RuntimeError("Blender not found. Set the path in Settings.")
 
             fr = job.get("frames") or {}
             fstart = int(fr["start"] if fr.get("start") is not None
@@ -149,7 +141,7 @@ class RenderWorker:
                 proc = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, encoding="utf-8", errors="replace", bufsize=1,
-                    creationflags=config.CREATE_NO_WINDOW,
+                    **system.popen_kwargs(),
                 )
                 with self._lock:
                     self._proc = proc

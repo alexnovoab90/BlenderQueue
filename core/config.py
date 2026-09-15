@@ -1,14 +1,14 @@
 """Configuration, paths and Blender discovery for BlendQueue."""
 from __future__ import annotations
 
-import glob
 import os
 import pathlib
-import re
 import shutil
 import subprocess
 import threading
 import time
+
+from . import system
 
 APP_DIR = pathlib.Path(__file__).resolve().parent.parent
 DATA_DIR = APP_DIR / "data"
@@ -25,21 +25,6 @@ STATE_FILE = DATA_DIR / "state.json"
 
 DEFAULT_PORT = 8777
 
-# Where Blender usually lives (installer, Steam, portable on another drive).
-INSTALL_DIRS = (
-    r"{drive}:\Program Files\Blender Foundation",
-    r"{drive}:\Program Files (x86)\Blender Foundation",
-    r"{drive}:\Blender Foundation",
-)
-STEAM_PATHS = (
-    r"{drive}:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe",
-    r"{drive}:\SteamLibrary\steamapps\common\Blender\blender.exe",
-    r"{drive}:\Steam\steamapps\common\Blender\blender.exe",
-)
-DRIVES = ("C", "D", "E", "F", "G")
-
-CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
-
 
 def ensure_dirs() -> None:
     for d in (DATA_DIR, UPLOADS_DIR, OUTPUTS_DIR, LOGS_DIR, PREVIEWS_DIR, INSPECT_DIR,
@@ -47,38 +32,11 @@ def ensure_dirs() -> None:
         d.mkdir(parents=True, exist_ok=True)
 
 
-def _version_key(path: str) -> tuple:
-    """Sorts 'Blender 5.2' above 'Blender 4.5' (and above 'Blender 4.10')."""
-    folder = os.path.basename(os.path.dirname(path))
-    nums = tuple(int(n) for n in re.findall(r"\d+", folder))
-    return nums or (0,)
-
-
 def find_blender() -> str | None:
-    """Finds blender.exe: env var, known installs, PATH and Steam."""
-    env = os.environ.get("BLENDQUEUE_BLENDER", "").strip().strip('"')
-    if env and pathlib.Path(env).is_file():
-        return env
-
-    installs = []
-    for drive in DRIVES:
-        for tpl in INSTALL_DIRS:
-            base = tpl.format(drive=drive)
-            if os.path.isdir(base):
-                installs += glob.glob(os.path.join(base, "*", "blender.exe"))
-    for p in sorted(installs, key=_version_key, reverse=True):
-        if pathlib.Path(p).is_file():
+    """First runnable Blender among the candidates for this platform."""
+    for p in system.blender_candidates():
+        if system.is_runnable(p):
             return p
-
-    w = shutil.which("blender")
-    if w:
-        return w
-
-    for drive in DRIVES:
-        for tpl in STEAM_PATHS:
-            p = tpl.format(drive=drive)
-            if pathlib.Path(p).is_file():
-                return p
     return None
 
 
@@ -112,11 +70,11 @@ def blender_info(path: str | None = None, force: bool = False) -> dict:
         _BI["checked"] = time.time()
         if not p:
             _BI["version"] = None
-            _BI["error"] = "blender.exe not found"
+            _BI["error"] = "Blender not found"
             return _bi_result()
         try:
             out = subprocess.run([p, "--version"], capture_output=True, text=True, timeout=60,
-                                 creationflags=CREATE_NO_WINDOW)
+                                 **system.popen_kwargs())
             lines = (out.stdout or "").strip().splitlines()
             ver = lines[0].strip() if lines else ""
             _BI["version"] = ver or None

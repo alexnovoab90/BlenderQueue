@@ -553,7 +553,7 @@ function jobCard(j) {
     acts.push('<button class="btn sm ghost" data-act="cancel" data-id="' + j.id + '">' + esc(t("Cancel")) + '</button>');
   } else {
     if (j.status === "done") {
-      acts.push('<button class="btn sm primary" data-act="open-folder" data-id="' + j.id + '" title="' + esc(t("Open the output folder in Explorer")) + '">' + esc(t("📂 Open folder")) + '</button>');
+      acts.push('<button class="btn sm primary" data-act="open-folder" data-id="' + j.id + '" title="' + esc(t("Open the output folder in your file manager")) + '">' + esc(t("📂 Open folder")) + '</button>');
     }
     acts.push('<button class="btn sm ghost" data-act="retry" data-id="' + j.id + '">' + esc(t("Retry")) + '</button>');
     acts.push('<button class="btn sm ghost danger" data-act="delete" data-id="' + j.id + '">✕</button>');
@@ -1091,6 +1091,8 @@ function fillSettings() {
   if (!state) return;
   const s = state.settings || {}, b = state.blender || {};
   $("#setBlender").value = s.blender_path || b.path || "";
+  $("#setBlender").placeholder = { mac: "/Applications/Blender.app/Contents/MacOS/Blender",
+                                   linux: "/usr/bin/blender" }[state.platform] || String.raw`D:\...\blender.exe`;
   $("#setNotif").checked = !!s.notifications;
   $("#setPreview").checked = !!s.preview_video;
   $("#setBlenderStatus").textContent = b.ok ? tf("OK — {v}", { v: b.version })
