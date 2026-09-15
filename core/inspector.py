@@ -57,11 +57,11 @@ class InspectorLane:
         self.on_update()
 
         if not os.path.exists(rec["path"]):
-            raise RuntimeError("El archivo ya no existe en disco.")
+            raise RuntimeError("The file no longer exists on disk.")
 
         blender = self._blender()
         if not blender:
-            raise RuntimeError("No se encontró blender.exe. Configura la ruta en Ajustes.")
+            raise RuntimeError("blender.exe not found. Set the path in Settings.")
 
         script = config.BLENDER_SIDE_DIR / "inspect_blend.py"
         out_json = config.INSPECT_DIR / f"{fid}.json"
@@ -80,12 +80,12 @@ class InspectorLane:
 
         if not out_json.exists():
             raise RuntimeError(
-                f"Blender no generó el reporte (código {proc.returncode}). "
-                f"Revisa data/logs/{log_path.name}")
+                f"Blender did not produce the report (exit {proc.returncode}). "
+                f"See data/logs/{log_path.name}")
         with open(out_json, "r", encoding="utf-8") as fh:
             report = json.load(fh)
         if not report.get("ok", False):
-            raise RuntimeError("Inspección falló: " + str(report.get("error")))
+            raise RuntimeError("Inspection failed: " + str(report.get("error")))
         report["inspect_seconds"] = round(dur, 1)
         # Los formatos que ofrece la UI salen de los enums reales de este Blender.
         self.store.set_caps(report.get("capabilities"))

@@ -9,9 +9,12 @@ when each job finishes.
 No cloud, no accounts, no telemetry: a FastAPI server bound to `127.0.0.1` and a plain
 HTML/CSS/JS front-end with no build step.
 
-*[Léeme en español](README.es.md) — the interface is in Spanish.*
+*[Léeme en español](README.es.md)*
 
 ![BlendQueue](docs/screenshot.png)
+
+The interface is in **English** by default; the header has an **EN / ES** switch and the choice
+is remembered per browser.
 
 ## Why
 
@@ -134,6 +137,7 @@ core/worker.py                  sequential render worker: spawn, progress, previ
 core/renderer.py                command building, override codegen, progress parsing, ffmpeg
 core/formats.py                 output format catalog and override validation
 blender_side/inspect_blend.py   runs INSIDE Blender, reports scenes and capabilities as JSON
+static/i18n.js                  interface languages (English in the code + a Spanish map)
 static/                         web interface (no build step)
 tests/                          smoke tests and .blend generator
 data/                           state, per-job logs and scripts, uploads, previews (git-ignored)

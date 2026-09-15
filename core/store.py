@@ -61,7 +61,7 @@ class Store:
             st = job.get("status")
             if st == "running":
                 job["status"] = "error"
-                job["error"] = "Interrumpido: la aplicación se cerró durante el render."
+                job["error"] = "Interrupted: the app was closed during the render."
                 job["finished_at"] = now()
             elif st not in ("queued", "done", "error", "canceled"):
                 job["status"] = "queued"

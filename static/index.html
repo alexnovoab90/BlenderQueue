@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BlendQueue — cola local de renders Blender</title>
+  <title>BlendQueue — local render queue for Blender</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=5">
+  <link rel="stylesheet" href="/static/styles.css?v=6">
 </head>
 <body>
   <header class="topbar">
@@ -13,31 +13,37 @@
       <img class="logo-img" src="/static/blender-logo.webp" alt="Blender">
       <div class="brand-text">
         <h1>BlendQueue</h1>
-        <span class="tagline">cola local de renders · Blender headless</span>
+        <span class="tagline" data-i18n>local render queue · headless Blender</span>
       </div>
     </div>
     <div class="topbar-right">
       <span id="blenderBadge" class="badge">Blender: …</span>
-      <button id="btnPause" class="btn">Pausar cola</button>
-      <button id="btnScripts" class="btn ghost" title="Biblioteca de scripts de Python">Scripts</button>
-      <button id="btnSettings" class="btn ghost">Ajustes</button>
-      <button id="btnShutdown" class="btn danger" title="Detener BlendQueue y cerrar la ventana del servidor">⏻ Cerrar</button>
+      <button id="btnPause" class="btn">Pause queue</button>
+      <button id="btnScripts" class="btn ghost" data-i18n data-i18n-title title="Python script library">Scripts</button>
+      <button id="btnSettings" class="btn ghost" data-i18n>Settings</button>
+      <select id="langSel" class="input lang" data-i18n-title title="Interface language">
+        <option value="en">EN</option>
+        <option value="es">ES</option>
+      </select>
+      <button id="btnShutdown" class="btn danger" data-i18n data-i18n-title
+        title="Stop BlendQueue and close the server window">⏻ Quit</button>
     </div>
   </header>
 
   <main>
     <section class="panel" id="addPanel">
       <div class="dropzone" id="dropzone">
-        <div class="dz-line"><strong>Arrastra aquí tus .blend</strong> o
-          <button class="btn sm" id="btnBrowseFiles">elegir archivos…</button>
+        <div class="dz-line"><strong data-i18n>Drop your .blend files here</strong> <span data-i18n>or</span>
+          <button class="btn sm" id="btnBrowseFiles" data-i18n>choose files…</button>
         </div>
         <div class="dz-line">
-          <button class="btn sm ghost" id="btnBrowse">Seleccionar ruta del equipo…</button>
-          <span class="muted">se renderiza en su lugar, sin copiar</span>
+          <button class="btn sm ghost" id="btnBrowse" data-i18n>Pick a path on this computer…</button>
+          <span class="muted" data-i18n>rendered in place, without copying</span>
         </div>
-        <div class="dz-note muted">Por ruta se conservan las texturas relativas del .blend.
-          Al arrastrar, el archivo se copia a <code>data/uploads</code>. También puedes registrar
-          una carpeta completa con .blend y se agregarán todos.</div>
+        <div class="dz-note muted">
+          <span data-i18n>Adding by path keeps the .blend's relative textures working. Dropping a file copies it into</span>
+          <code>data/uploads</code><span data-i18n>. You can also register a whole folder and every .blend inside is added.</span>
+        </div>
         <div id="uploadStatus" class="muted"></div>
       </div>
       <input type="file" id="fileInput" multiple accept=".blend" hidden>
@@ -45,7 +51,7 @@
 
     <section class="panel">
       <div class="panel-head">
-        <h2>Archivos</h2>
+        <h2 data-i18n>Files</h2>
         <span class="muted" id="filesCount"></span>
       </div>
       <div id="filesList" class="files"></div>
@@ -53,12 +59,14 @@
 
     <section class="panel">
       <div class="panel-head">
-        <h2>Cola de renders</h2>
+        <h2 data-i18n>Render queue</h2>
         <div class="head-right">
           <span class="muted" id="queueSummary"></span>
           <span id="queueFormatWarn" class="chip warn hidden"></span>
-          <button class="btn sm ghost" id="btnQueueFormat" title="Cambiar el formato de salida de los trabajos en cola">Formato de salida…</button>
-          <button class="btn sm ghost" id="btnQueueScript" title="Aplicar un script de Python a los trabajos en cola">Script…</button>
+          <button class="btn sm ghost" id="btnQueueFormat" data-i18n data-i18n-title
+            title="Change the output format of the queued jobs">Output format…</button>
+          <button class="btn sm ghost" id="btnQueueScript" data-i18n data-i18n-title
+            title="Apply a Python script to the queued jobs">Script…</button>
         </div>
       </div>
       <div id="queueList" class="queue"></div>
@@ -67,124 +75,125 @@
 
   <div id="toasts"></div>
 
-  <!-- Modal: explorador de archivos / carpetas -->
+  <!-- Modal: file / folder browser -->
   <div class="modal hidden" id="fsModal">
     <div class="modal-box wide">
       <div class="modal-head">
-        <h3 id="fsTitle">Seleccionar archivos .blend</h3>
+        <h3 id="fsTitle">Select .blend files</h3>
         <button class="x" data-close="fsModal">✕</button>
       </div>
       <div class="fs-bar">
-        <button class="btn sm" id="fsUp">↑ Subir</button>
-        <input class="input grow" id="fsPath" placeholder="Escribe una ruta (ej. G:\Unidades compartidas\...) y presiona Ir">
-        <button class="btn sm" id="fsGo">Ir</button>
+        <button class="btn sm" id="fsUp" data-i18n>↑ Up</button>
+        <input class="input grow" id="fsPath" data-i18n-ph placeholder="Type a path and press Go">
+        <button class="btn sm" id="fsGo" data-i18n>Go</button>
       </div>
       <div class="fs-list" id="fsList"></div>
       <div class="modal-foot">
-        <span class="muted" id="fsHint">Navega y marca los .blend que quieras agregar.</span>
+        <span class="muted" id="fsHint">Browse and tick the .blend files you want to add.</span>
         <div class="foot-actions">
-          <button class="btn ghost" id="fsPickDir">Usar esta carpeta</button>
-          <button class="btn primary" id="fsAdd">Agregar seleccionados</button>
+          <button class="btn ghost" id="fsPickDir">Use this folder</button>
+          <button class="btn primary" id="fsAdd" data-i18n>Add selected</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Modal: ajustes -->
+  <!-- Modal: settings -->
   <div class="modal hidden" id="settingsModal">
     <div class="modal-box">
-      <div class="modal-head"><h3>Ajustes</h3><button class="x" data-close="settingsModal">✕</button></div>
+      <div class="modal-head"><h3 data-i18n>Settings</h3><button class="x" data-close="settingsModal">✕</button></div>
       <div class="settings">
         <label class="field">
-          <span>Ruta de blender.exe</span>
+          <span data-i18n>Path to blender.exe</span>
           <div class="row">
             <input class="input grow" id="setBlender" placeholder="D:\...\blender.exe">
-            <button class="btn sm" id="setBlenderCheck">Verificar</button>
+            <button class="btn sm" id="setBlenderCheck" data-i18n>Check</button>
           </div>
           <span class="muted" id="setBlenderStatus"></span>
         </label>
-        <label class="check"><input type="checkbox" id="setNotif"> Notificación de escritorio al terminar cada render</label>
-        <label class="check"><input type="checkbox" id="setPreview"> Generar video MP4 de preview de cada secuencia</label>
-        <div class="muted small">La salida de cada trabajo se define por escena: por defecto se respeta la carpeta
-          guardada en el .blend; puedes cambiarla en los overrides de cada escena.</div>
+        <label class="check"><input type="checkbox" id="setNotif">
+          <span data-i18n>Desktop notification when each render finishes</span></label>
+        <label class="check"><input type="checkbox" id="setPreview">
+          <span data-i18n>Build an MP4 preview video of each sequence</span></label>
+        <div class="muted small" data-i18n>Each job's output is set per scene: by default the folder saved in the .blend is used; you can change it in the scene overrides.</div>
       </div>
       <div class="modal-foot">
-        <button class="btn ghost" id="setNotifyTest">Probar notificación</button>
-        <button class="btn primary" id="setSave">Guardar ajustes</button>
+        <button class="btn ghost" id="setNotifyTest" data-i18n>Test notification</button>
+        <button class="btn primary" id="setSave" data-i18n>Save settings</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: formato de salida (por trabajo o para toda la cola) -->
+  <!-- Modal: output format (per job or for the whole queue) -->
   <div class="modal hidden" id="fmtModal">
     <div class="modal-box">
       <div class="modal-head">
-        <h3 id="fmtTitle">Formato de salida</h3>
+        <h3 id="fmtTitle">Output format</h3>
         <button class="x" data-close="fmtModal">✕</button>
       </div>
       <div class="settings">
         <div class="muted small" id="fmtScope"></div>
         <div id="fmtFields" class="fmt-fields"></div>
-        <div class="muted small">Se aplica al renderizar, sobre una copia en memoria: el archivo
-          .blend nunca se modifica. Con «(el del archivo)» se respeta lo que trae cada escena.</div>
+        <div class="muted small" data-i18n>Applied when rendering, on an in-memory copy: the .blend file is never modified. With “the file's one” each scene keeps what it has.</div>
       </div>
       <div class="modal-foot">
         <span class="muted small" id="fmtPreview"></span>
         <div class="foot-actions">
-          <button class="btn ghost" data-close="fmtModal">Cancelar</button>
-          <button class="btn primary" id="fmtApply">Aplicar</button>
+          <button class="btn ghost" data-close="fmtModal" data-i18n>Cancel</button>
+          <button class="btn primary" id="fmtApply" data-i18n>Apply</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Modal: biblioteca de scripts de Python (y elegir cuál aplicar) -->
+  <!-- Modal: Python script library (and picking which one to apply) -->
   <div class="modal hidden" id="scriptModal">
     <div class="modal-box wide">
       <div class="modal-head">
-        <h3 id="scriptTitle">Scripts de Python</h3>
+        <h3 id="scriptTitle">Python scripts</h3>
         <button class="x" data-close="scriptModal">✕</button>
       </div>
       <div class="settings">
         <div class="row">
           <select class="input grow" id="scriptPick"></select>
-          <button class="btn sm" id="scriptNew">Nuevo</button>
-          <button class="btn sm" id="scriptDup">Duplicar</button>
-          <button class="btn sm ghost danger" id="scriptDel">Borrar</button>
+          <button class="btn sm" id="scriptNew" data-i18n>New</button>
+          <button class="btn sm" id="scriptDup" data-i18n>Duplicate</button>
+          <button class="btn sm ghost danger" id="scriptDel" data-i18n>Delete</button>
         </div>
         <label class="field">
-          <span>Nombre</span>
-          <input class="input" id="scriptName" placeholder="Limpiar materiales duplicados">
+          <span data-i18n>Name</span>
+          <input class="input" id="scriptName" data-i18n-ph placeholder="Clean duplicate materials">
         </label>
         <label class="field">
-          <span>Código Python — corre dentro de Blender, justo antes de renderizar</span>
+          <span data-i18n>Python code — runs inside Blender, right before rendering</span>
           <textarea class="input code" id="scriptCode" rows="12" spellcheck="false"
-            placeholder="# Recibes bpy, sc (la escena de este trabajo) y blend_path&#10;for mat in bpy.data.materials:&#10;    ..."></textarea>
+            placeholder="# You get bpy, sc (this job's scene) and blend_path&#10;for mat in bpy.data.materials:&#10;    ..."></textarea>
         </label>
-        <div class="muted small">Se ejecuta después de los overrides, así que puede cambiar
-          cualquier cosa (incluido el formato). Si lanza una excepción el trabajo queda en
-          <strong>error</strong> con el traceback en su log, sin renderizar. El .blend nunca se
-          modifica: los cambios viven solo en la sesión de Blender que hace ese render.</div>
+        <div class="muted small">
+          <span data-i18n>It runs after the overrides, so it can change anything (including the format). If it raises, the job ends in</span>
+          <strong data-i18n>error</strong>
+          <span data-i18n>with the traceback in its log and nothing is rendered. The .blend is never modified: the changes live only in the Blender session that renders that job.</span>
+        </div>
       </div>
       <div class="modal-foot">
         <span class="muted small" id="scriptScope"></span>
         <div class="foot-actions">
-          <button class="btn" id="scriptSave">Guardar</button>
-          <button class="btn primary hidden" id="scriptApply">Aplicar</button>
+          <button class="btn" id="scriptSave" data-i18n>Save</button>
+          <button class="btn primary hidden" id="scriptApply">Apply</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Modal: log -->
+  <!-- Modal: job log -->
   <div class="modal hidden" id="logModal">
     <div class="modal-box wide">
-      <div class="modal-head"><h3>Log del trabajo</h3><button class="x" data-close="logModal">✕</button></div>
+      <div class="modal-head"><h3 data-i18n>Job log</h3><button class="x" data-close="logModal">✕</button></div>
       <pre id="logContent" class="log"></pre>
     </div>
   </div>
 
-  <!-- Modal: visor de frames -->
+  <!-- Modal: frame viewer -->
   <div class="modal hidden" id="frameModal">
     <div class="modal-box wide frame-box">
       <div class="modal-head">
@@ -200,6 +209,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=5"></script>
+  <script src="/static/i18n.js?v=6"></script>
+  <script src="/static/app.js?v=6"></script>
 </body>
 </html>

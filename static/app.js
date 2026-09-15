@@ -106,10 +106,10 @@ function fmtExt(id, container) {
 function fmtLabel(id, container, depth) {
   const s = fmtSpec(id);
   if (!s) return id || "—";
-  if (s.ffmpeg) return "Video " + fmtExt(id, container);
-  let t = s.label;
-  if (depth && (s.depths || []).length > 1) t += " " + depth;
-  return t;
+  if (s.ffmpeg) return tf("Video {ext}", { ext: fmtExt(id, container) });
+  let txt = t(s.label);
+  if (depth && (s.depths || []).length > 1) txt += " " + depth;
+  return txt;
 }
 
 function optionList(items, value, blank) {
@@ -118,7 +118,7 @@ function optionList(items, value, blank) {
     const id = (it && it.id !== undefined) ? it.id : it;
     const label = (it && it.label !== undefined) ? it.label : id;
     h += '<option value="' + esc(id) + '"' +
-      (String(value ?? "") === String(id) ? " selected" : "") + ">" + esc(label) + "</option>";
+      (String(value ?? "") === String(id) ? " selected" : "") + ">" + esc(t(String(label))) + "</option>";
   }
   return h;
 }
@@ -129,27 +129,29 @@ function formatFields(v) {
   const all = (FMT && FMT.formats) || [];
   const common = all.filter(f => f.common);
   const rest = all.filter(f => !f.common);
-  let opts = '<option value="">(el del archivo)</option>' + optionList(common, v.format, null);
-  if (rest.length) opts += '<optgroup label="Otros">' + optionList(rest, v.format, null) + "</optgroup>";
+  let opts = '<option value="">' + esc(t("(the file's one)")) + '</option>' +
+    optionList(common, v.format, null);
+  if (rest.length) opts += '<optgroup label="' + esc(t("Others")) + '">' +
+    optionList(rest, v.format, null) + "</optgroup>";
   return '' +
-    '<label class="fmt-opt"><span>Formato</span>' +
+    '<label class="fmt-opt"><span>' + esc(t("Format")) + '</span>' +
       '<select class="input fmt-format">' + opts + '</select></label>' +
-    '<label class="fmt-opt hidden" data-need="depth"><span>Profundidad</span>' +
+    '<label class="fmt-opt hidden" data-need="depth"><span>' + esc(t("Depth")) + '</span>' +
       '<select class="input fmt-depth"></select></label>' +
-    '<label class="fmt-opt hidden" data-need="mode"><span>Color</span>' +
+    '<label class="fmt-opt hidden" data-need="mode"><span>' + esc(t("Color")) + '</span>' +
       '<select class="input fmt-mode"></select></label>' +
-    '<label class="fmt-opt hidden" data-need="quality"><span class="fmt-quality-label">Calidad %</span>' +
+    '<label class="fmt-opt hidden" data-need="quality"><span class="fmt-quality-label">' + esc(t("Quality %")) + '</span>' +
       '<input class="input num fmt-quality" type="number" min="0" max="100" style="width:72px" value="' +
         esc(v.quality ?? "") + '"></label>' +
-    '<label class="fmt-opt hidden" data-need="exr"><span>Códec EXR</span>' +
+    '<label class="fmt-opt hidden" data-need="exr"><span>' + esc(t("EXR codec")) + '</span>' +
       '<select class="input fmt-exr">' +
-        optionList((FMT && FMT.exr_codecs) || [], v.exr_codec, "(por defecto)") + '</select></label>' +
-    '<label class="fmt-opt hidden" data-need="ffmpeg"><span>Contenedor</span>' +
+        optionList((FMT && FMT.exr_codecs) || [], v.exr_codec, t("(default)")) + '</select></label>' +
+    '<label class="fmt-opt hidden" data-need="ffmpeg"><span>' + esc(t("Container")) + '</span>' +
       '<select class="input fmt-container">' +
         optionList((FMT && FMT.ffmpeg_containers) || [], v.ffmpeg_container || "MPEG4", null) + '</select></label>' +
-    '<label class="fmt-opt hidden" data-need="ffmpeg"><span>Códec de video</span>' +
+    '<label class="fmt-opt hidden" data-need="ffmpeg"><span>' + esc(t("Video codec")) + '</span>' +
       '<select class="input fmt-codec">' +
-        optionList((FMT && FMT.ffmpeg_codecs) || [], v.ffmpeg_codec, "(por defecto)") + '</select></label>';
+        optionList((FMT && FMT.ffmpeg_codecs) || [], v.ffmpeg_codec, t("(default)")) + '</select></label>';
 }
 
 /** Muestra solo las opciones que aplican al formato elegido. */
@@ -172,16 +174,16 @@ function syncFormatFields(root, v) {
   const dsel = root.querySelector(".fmt-depth");
   if (dsel) {
     const want = v.color_depth !== undefined ? v.color_depth : dsel.value;
-    dsel.innerHTML = optionList(depths.map(d => ({ id: d, label: d + " bits" })), want, "(por defecto)");
+    dsel.innerHTML = optionList(depths.map(d => ({ id: d, label: d + " " + t("bits") })), want, t("(default)"));
   }
   const msel = root.querySelector(".fmt-mode");
   if (msel) {
     const want = v.color_mode !== undefined ? v.color_mode : msel.value;
     const avail = ((FMT && FMT.color_modes) || []).filter(m => modes.includes(m.id));
-    msel.innerHTML = optionList(avail, want, "(por defecto)");
+    msel.innerHTML = optionList(avail, want, t("(default)"));
   }
   const ql = root.querySelector(".fmt-quality-label");
-  if (ql) ql.textContent = (s && s.quality_label) || "Calidad %";
+  if (ql) ql.textContent = t((s && s.quality_label) || "Quality %");
 }
 
 /** Lee los controles visibles y arma el override de formato. */
@@ -190,7 +192,7 @@ function readFormat(root) {
   if (!root) return out;
   const sel = root.querySelector(".fmt-format");
   const fmt = sel ? sel.value : "";
-  if (!fmt) return out;               // "(el del archivo)": sin override
+  if (!fmt) return out;               // "(the file's one)": sin override
   out.format = fmt;
   const g = q => {
     const el = root.querySelector(q);
@@ -213,7 +215,7 @@ function scriptById(id) { return scriptsList().find(s => s.id === id) || null; }
 function scriptsSig() { return scriptsList().map(s => s.id + ":" + s.name).join(","); }
 
 function scriptOptions(selected) {
-  return optionList(scriptsList().map(s => ({ id: s.id, label: s.name })), selected, "(ninguno)");
+  return optionList(scriptsList().map(s => ({ id: s.id, label: s.name })), selected, t("(none)"));
 }
 
 /* ============================ tick principal ============================ */
@@ -241,19 +243,19 @@ function renderStatus(st) {
     b.className = "badge ok";
     b.title = st.blender.path || "";
   } else {
-    b.textContent = "Blender: no encontrado";
+    b.textContent = t("Blender: not found");
     b.className = "badge err";
     b.title = st.blender.error || "";
   }
   const pause = $("#btnPause");
-  pause.textContent = st.worker.paused ? "Reanudar cola" : "Pausar cola";
+  pause.textContent = st.worker.paused ? t("Resume queue") : t("Pause queue");
   pause.classList.toggle("warn", !!st.worker.paused);
 }
 
 /* ============================ archivos ============================ */
 function renderFiles(st) {
   const insp = st.inspector && st.inspector.current_file_id;
-  $("#filesCount").textContent = st.files.length ? st.files.length + " archivo(s)" : "";
+  $("#filesCount").textContent = st.files.length ? tf("{n} file(s)", { n: st.files.length }) : "";
   const sig = JSON.stringify(st.files.map(f => ({
     i: f.id, s: f.status, e: f.inspect_error, t: f.inspected_at,
     r: f.report ? f.report.inspect_seconds : null
@@ -262,7 +264,8 @@ function renderFiles(st) {
   filesSig = sig;
   const el = $("#filesList");
   el.innerHTML = st.files.map(f => fileCard(f, insp === f.id)).join("")
-    || '<div class="empty muted">Aún no hay archivos. Arrastra un .blend arriba o usa “Seleccionar ruta del equipo…”.</div>';
+    || '<div class="empty muted">' +
+       esc(t("No files yet. Drop a .blend above or use “Pick a path on this computer…”.")) + '</div>';
   // Los selects de formato dependen del formato elegido: se sincronizan al dibujar.
   $$(".ov-format", el).forEach(root => {
     const row = root.closest(".scene");
@@ -272,18 +275,18 @@ function renderFiles(st) {
 }
 
 function fileCard(f, inspecting) {
-  let chip = '<span class="chip done">listo</span>';
-  if (f.status === "inspecting") chip = '<span class="chip running">inspeccionando…</span>';
-  else if (f.status === "pending") chip = '<span class="chip queued">en espera</span>';
-  else if (f.status === "error") chip = '<span class="chip error">error</span>';
+  let chip = '<span class="chip done">' + esc(t("ready")) + '</span>';
+  if (f.status === "inspecting") chip = '<span class="chip running">' + esc(t("inspecting…")) + '</span>';
+  else if (f.status === "pending") chip = '<span class="chip queued">' + esc(t("waiting")) + '</span>';
+  else if (f.status === "error") chip = '<span class="chip error">' + esc(t("error")) + '</span>';
 
   const r = f.report || {};
   const meta = [];
   if (f.size) meta.push(fmtBytes(f.size));
-  if (r.saved_with) meta.push("guardado con Blender " + r.saved_with);
-  if (r.inspect_seconds) meta.push("inspección " + r.inspect_seconds + " s");
-  if (r.counts) meta.push(r.counts.objects + " objetos · " + r.counts.scenes + " escena(s)");
-  if (r.missing_external_count) meta.push("⚠ faltan " + r.missing_external_count + " archivo(s) externo(s)");
+  if (r.saved_with) meta.push(tf("saved with Blender {v}", { v: r.saved_with }));
+  if (r.inspect_seconds) meta.push(tf("inspection {s} s", { s: r.inspect_seconds }));
+  if (r.counts) meta.push(tf("{o} objects · {s} scene(s)", { o: r.counts.objects, s: r.counts.scenes }));
+  if (r.missing_external_count) meta.push(tf("⚠ {n} external file(s) missing", { n: r.missing_external_count }));
 
   const scenes = (r.scenes || []).map(s => sceneRow(f, s)).join("");
 
@@ -291,9 +294,9 @@ function fileCard(f, inspecting) {
     '<div class="file-head">' +
       '<div class="file-title"><span class="fname">' + esc(f.name) + '</span>' + chip + '</div>' +
       '<div class="file-actions">' +
-        '<button class="btn sm ghost" data-act="inspect" data-id="' + f.id + '">Re-inspeccionar</button>' +
-        '<button class="btn sm ghost" data-act="open-file" data-path="' + esc(f.path) + '">Abrir carpeta</button>' +
-        '<button class="btn sm ghost danger" data-act="remove-file" data-id="' + f.id + '">Quitar</button>' +
+        '<button class="btn sm ghost" data-act="inspect" data-id="' + f.id + '">' + esc(t("Re-inspect")) + '</button>' +
+        '<button class="btn sm ghost" data-act="open-file" data-path="' + esc(f.path) + '">' + esc(t("Open folder")) + '</button>' +
+        '<button class="btn sm ghost danger" data-act="remove-file" data-id="' + f.id + '">' + esc(t("Remove")) + '</button>' +
       '</div>' +
     '</div>' +
     '<div class="file-path muted" title="' + esc(f.path) + '">' + esc(f.path) + '</div>' +
@@ -301,7 +304,7 @@ function fileCard(f, inspecting) {
     (f.inspect_error ? '<div class="err">' + esc(f.inspect_error) + '</div>' : '') +
     (f.status === "ready" ?
       '<div class="scenes">' + scenes +
-        '<div class="scenes-foot"><button class="btn sm" data-act="enqueue-all" data-id="' + f.id + '">+ Encolar todas las escenas</button></div>' +
+        '<div class="scenes-foot"><button class="btn sm" data-act="enqueue-all" data-id="' + f.id + '">' + esc(t("+ Queue all scenes")) + '</button></div>' +
       '</div>' : '') +
     '</div>';
 }
@@ -309,10 +312,11 @@ function fileCard(f, inspecting) {
 function sceneRow(f, s) {
   const key = f.id + "|" + s.name;
   const d = overrideDraft[key] || {};
-  const frames = (s.frame_start != null) ? (s.frame_start + "–" + s.frame_end + " · " + s.frame_count + " frames") : "";
+  const frames = (s.frame_start != null)
+    ? tf("{a}–{b} · {n} frames", { a: s.frame_start, b: s.frame_end, n: s.frame_count }) : "";
   const eng = engineLabel(s.engine) + (s.samples ? " · " + s.samples + " spp" : "") + (s.device ? " " + s.device : "");
   const res = s.resolution_x ? (s.resolution_x + "×" + s.resolution_y) : "";
-  const out = s.filepath_raw || "(por defecto del .blend)";
+  const out = s.filepath_raw || t("(the .blend default)");
   const ovFmt = (d.fmt && d.fmt.format) ? d.fmt : null;
   const fmtTxt = ovFmt
     ? fmtLabel(ovFmt.format, ovFmt.ffmpeg_container, ovFmt.color_depth)
@@ -325,41 +329,41 @@ function sceneRow(f, s) {
         '<span class="tag">' + frames + '</span>' +
         '<span class="tag">' + esc(eng) + '</span>' +
         '<span class="tag">' + esc(res) + '</span>' +
-        (fmtTxt ? '<span class="tag fmt' + (ovFmt ? ' out-own' : '') + '" title="formato de salida"' +
+        (fmtTxt ? '<span class="tag fmt' + (ovFmt ? ' out-own' : '') + '" title="' + esc(t("output format")) + '"' +
           ' data-fmt="' + esc(s.file_format || '') + '" data-cont="' + esc(s.ffmpeg_container || '') +
           '" data-depth="' + esc(s.color_depth || '') + '">' + esc(fmtTxt) + '</span>' : '') +
         '<span class="tag script' + (d.script_id && scriptById(d.script_id) ? '' : ' hidden') +
-          '" title="script de Python de este trabajo">' +
+          '" title="' + esc(t("Python script for this job")) + '">' +
           esc(d.script_id && scriptById(d.script_id) ? scriptById(d.script_id).name : '') + '</span>' +
         (s.camera ? '<span class="tag">cam ' + esc(s.camera) + '</span>' : '') +
         '<span class="tag out' + (d.out ? ' out-own' : '') + '" data-raw="' + esc(s.filepath_raw || '') + '" data-abs="' + esc(s.filepath_abs || '') + '" title="' + esc(d.out || s.filepath_abs || '') + '">→ ' + esc(d.out || out) + '</span>' +
       '</span>' +
       '<span class="scene-actions">' +
-        '<button class="btn sm ghost" data-act="pick-out" title="Elegir carpeta de salida para esta escena">📁 Salida…</button>' +
-        '<button class="btn sm ghost" data-act="toggle-ov">Overrides…</button>' +
-        '<button class="btn sm primary" data-act="enqueue">+ Encolar</button>' +
+        '<button class="btn sm ghost" data-act="pick-out" title="' + esc(t("Choose the output folder for this scene")) + '">' + esc(t("📁 Output…")) + '</button>' +
+        '<button class="btn sm ghost" data-act="toggle-ov">' + esc(t("Overrides…")) + '</button>' +
+        '<button class="btn sm primary" data-act="enqueue">' + esc(t("+ Queue")) + '</button>' +
       '</span>' +
     '</div>' +
     '<div class="overrides hidden">' +
-      '<label>Frames <input class="input num ov-start" type="number" style="width:76px" value="' + esc(d.start ?? s.frame_start ?? "") + '"> – ' +
+      '<label>' + esc(t("Frames")) + ' <input class="input num ov-start" type="number" style="width:76px" value="' + esc(d.start ?? s.frame_start ?? "") + '"> – ' +
         '<input class="input num ov-end" type="number" style="width:76px" value="' + esc(d.end ?? s.frame_end ?? "") + '"></label>' +
-      '<label>Motor <select class="input ov-engine">' +
-        '<option value="">(del archivo)</option>' +
+      '<label>' + esc(t("Engine")) + ' <select class="input ov-engine">' +
+        '<option value="">' + esc(t("(from the file)")) + '</option>' +
         '<option value="CYCLES"' + (d.engine === "CYCLES" ? " selected" : "") + '>Cycles</option>' +
         '<option value="BLENDER_EEVEE"' + (d.engine === "BLENDER_EEVEE" ? " selected" : "") + '>EEVEE</option>' +
         '<option value="BLENDER_WORKBENCH"' + (d.engine === "BLENDER_WORKBENCH" ? " selected" : "") + '>Workbench</option>' +
       '</select></label>' +
-      '<label>Samples <input class="input num ov-samples" type="number" min="1" style="width:70px" value="' + esc(d.samples ?? "") + '"></label>' +
-      '<label>Dispositivo <select class="input ov-device">' +
-        '<option value="">(del archivo)</option>' +
+      '<label>' + esc(t("Samples")) + ' <input class="input num ov-samples" type="number" min="1" style="width:70px" value="' + esc(d.samples ?? "") + '"></label>' +
+      '<label>' + esc(t("Device")) + ' <select class="input ov-device">' +
+        '<option value="">' + esc(t("(from the file)")) + '</option>' +
         '<option value="GPU"' + (d.device === "GPU" ? " selected" : "") + '>GPU</option>' +
         '<option value="CPU"' + (d.device === "CPU" ? " selected" : "") + '>CPU</option>' +
       '</select></label>' +
-      '<label>Resolución % <input class="input num ov-res" type="number" min="1" max="400" style="width:64px" value="' + esc(d.res ?? "") + '"></label>' +
-      '<label>Script <select class="input ov-script">' + scriptOptions(d.script_id) + '</select></label>' +
-      '<label class="grow">Salida <input class="input ov-out" placeholder="(la del archivo)" value="' + esc(d.out ?? "") + '"></label>' +
-      '<button class="btn sm ghost" data-act="pick-out">Elegir carpeta…</button>' +
-      '<div class="fmt-fields ov-format">' + formatFields(d.fmt || {}) + '</div>' +
+      '<label>' + esc(t("Resolution %")) + ' <input class="input num ov-res" type="number" min="1" max="400" style="width:64px" value="' + esc(d.res ?? "") + '"></label>' +
+      '<label>' + esc(t("Script")) + ' <select class="input ov-script">' + scriptOptions(d.script_id) + '</select></label>' +
+      '<label class="grow">' + esc(t("Output")) + ' <input class="input ov-out" placeholder="' + esc(t("(the file's)")) + '" value="' + esc(d.out ?? "") + '"></label>' +
+      '<button class="btn sm ghost" data-act="pick-out">' + esc(t("Choose folder…")) + '</button>' +
+      '<div class="fmt-fields ov-format" data-label="' + esc(t("OUTPUT FORMAT")) + '">' + formatFields(d.fmt || {}) + '</div>' +
     '</div>' +
     '</div>';
 }
@@ -382,7 +386,7 @@ function updateSceneOutTag(row) {
   if (!tag) return;
   const d = readOverrideRow(row);
   const raw = tag.dataset.raw || "";
-  tag.textContent = "→ " + (d.out || raw || "(por defecto del .blend)");
+  tag.textContent = "→ " + (d.out || raw || t("(the .blend default)"));
   tag.title = d.out || tag.dataset.abs || "";
   if (d.out) {
     tag.classList.add("out-own");
@@ -398,13 +402,13 @@ function updateSceneFmtTag(row) {
   if (v.format) {
     tag.textContent = fmtLabel(v.format, v.ffmpeg_container, v.color_depth);
     tag.classList.add("out-own");
-    tag.title = "formato forzado para este trabajo";
+    tag.title = t("format forced for this job");
   } else {
     tag.textContent = tag.dataset.fmt
       ? fmtLabel(tag.dataset.fmt, tag.dataset.cont, tag.dataset.depth)
       : "—";
     tag.classList.remove("out-own");
-    tag.title = "formato guardado en el .blend";
+    tag.title = t("format saved in the .blend");
   }
 }
 
@@ -435,14 +439,15 @@ function renderQueue(st) {
   const counts = { queued: 0, running: 0, done: 0, error: 0, canceled: 0 };
   jobs.forEach(j => { if (counts[j.status] != null) counts[j.status]++; });
   $("#queueSummary").textContent =
-    jobs.length ? (counts.queued + " en cola · " + counts.running + " renderizando · " + counts.done + " listos") : "";
+    jobs.length ? tf("{q} queued · {r} rendering · {d} done",
+                     { q: counts.queued, r: counts.running, d: counts.done }) : "";
 
   const queued = jobs.filter(j => j.status === "queued");
   const distinct = [...new Set(queued.map(jobFormatId).filter(Boolean))];
   const warn = $("#queueFormatWarn");
   if (distinct.length > 1) {
-    warn.textContent = "formatos mezclados: " + distinct.map(id => fmtLabel(id)).join(", ");
-    warn.title = "Los trabajos en cola no escriben todos el mismo formato. Usa «Formato de salida…» para unificarlos.";
+    warn.textContent = tf("mixed formats: {list}", { list: distinct.map(id => fmtLabel(id)).join(", ") });
+    warn.title = t("Queued jobs do not all write the same format. Use “Output format…” to unify them.");
     warn.classList.remove("hidden");
   } else {
     warn.classList.add("hidden");
@@ -456,7 +461,8 @@ function renderQueue(st) {
   if (sig !== queueSig) {
     queueSig = sig;
     el.innerHTML = jobs.map(jobCard).join("")
-      || '<div class="empty muted">La cola está vacía. Inspecciona un archivo y encola sus escenas.</div>';
+      || '<div class="empty muted">' +
+         esc(t("The queue is empty. Inspect a file and queue its scenes.")) + '</div>';
     for (const id of openDetails) {
       const box = document.querySelector('[data-details="' + id + '"]');
       if (box) { box.classList.remove("hidden"); loadDetails(id); }
@@ -489,17 +495,19 @@ function renderQueue(st) {
 function progressText(j, pct) {
   const p = j.progress || {};
   const fr = j.frames || {};
-  if (j.status === "queued") return "en cola · frames " + fr.start + "–" + fr.end;
+  if (j.status === "queued") return tf("queued · frames {a}–{b}", { a: fr.start, b: fr.end });
   if (j.status === "running") {
-    let t = "frame " + (p.frame ?? "…") + " de " + (p.total_frames ?? (fr.end - fr.start + 1)) +
-            " · " + pct + "% · " + fmtDur(p.elapsed_s) + " transcurrido";
-    if (p.remaining_text) t += " · resto " + p.remaining_text;
-    else if (p.eta_s != null) t += " · resto ~" + fmtDur(p.eta_s);
-    return t;
+    let txt = tf("frame {f} of {t} · {p}% · {e} elapsed", {
+      f: p.frame ?? "…", t: p.total_frames ?? (fr.end - fr.start + 1),
+      p: pct, e: fmtDur(p.elapsed_s) });
+    if (p.remaining_text) txt += tf(" · left {x}", { x: p.remaining_text });
+    else if (p.eta_s != null) txt += tf(" · left ~{x}", { x: fmtDur(p.eta_s) });
+    return txt;
   }
-  if (j.status === "done") return "listo · " + (j.outputs || []).length + " archivo(s) · " + fmtDur(j.duration_s);
-  if (j.status === "error") return "error: " + (j.error || "");
-  if (j.status === "canceled") return "cancelado";
+  if (j.status === "done") return tf("done · {n} file(s) · {d}",
+                                     { n: (j.outputs || []).length, d: fmtDur(j.duration_s) });
+  if (j.status === "error") return tf("error: {e}", { e: j.error || "" });
+  if (j.status === "canceled") return t("canceled");
   return j.status;
 }
 
@@ -518,54 +526,58 @@ function summarizeOverrides(ov) {
   }
   if (ov.quality != null && ov.format) {
     const sp = fmtSpec(ov.format);
-    parts.push((sp && sp.quality_kind === "compression" ? "compresion " : "calidad ") + ov.quality + "%");
+    parts.push(tf(sp && sp.quality_kind === "compression" ? "compression {q}%" : "quality {q}%",
+                  { q: ov.quality }));
   }
   if (ov.output_dir) {
-    const tail = String(ov.output_dir).split(/[\\/]/).filter(Boolean).pop() || "salida";
+    const tail = String(ov.output_dir).split(/[\\/]/).filter(Boolean).pop() || t("output");
     parts.push("📁 " + tail);
   }
   return parts.join(" · ");
 }
 
 function jobCard(j) {
-  const chipLabels = { queued: "en cola", running: "renderizando", done: "listo", error: "error", canceled: "cancelado" };
+  const chipLabels = { queued: t("queued"), running: t("rendering"), done: t("done"),
+                       error: t("error"), canceled: t("canceled") };
   const fr = j.frames || {};
   const ovs = summarizeOverrides(j.overrides);
   const fmtTxt = jobFormatText(j);
   const scriptTxt = (j.overrides || {}).script_name;
   const acts = [];
   if (j.status === "queued") {
-    acts.push('<button class="btn sm ghost" data-act="move-up" data-id="' + j.id + '" title="Subir">↑</button>');
-    acts.push('<button class="btn sm ghost" data-act="move-down" data-id="' + j.id + '" title="Bajar">↓</button>');
-    acts.push('<button class="btn sm ghost" data-act="cancel" data-id="' + j.id + '">Cancelar</button>');
+    acts.push('<button class="btn sm ghost" data-act="move-up" data-id="' + j.id + '" title="' + esc(t("Move up")) + '">↑</button>');
+    acts.push('<button class="btn sm ghost" data-act="move-down" data-id="' + j.id + '" title="' + esc(t("Move down")) + '">↓</button>');
+    acts.push('<button class="btn sm ghost" data-act="cancel" data-id="' + j.id + '">' + esc(t("Cancel")) + '</button>');
     acts.push('<button class="btn sm ghost danger" data-act="delete" data-id="' + j.id + '">✕</button>');
   } else if (j.status === "running") {
-    acts.push('<button class="btn sm ghost" data-act="cancel" data-id="' + j.id + '">Cancelar</button>');
+    acts.push('<button class="btn sm ghost" data-act="cancel" data-id="' + j.id + '">' + esc(t("Cancel")) + '</button>');
   } else {
     if (j.status === "done") {
-      acts.push('<button class="btn sm primary" data-act="open-folder" data-id="' + j.id + '" title="Abrir la carpeta de salida en el Explorador">📂 Abrir carpeta</button>');
+      acts.push('<button class="btn sm primary" data-act="open-folder" data-id="' + j.id + '" title="' + esc(t("Open the output folder in Explorer")) + '">' + esc(t("📂 Open folder")) + '</button>');
     }
-    acts.push('<button class="btn sm ghost" data-act="retry" data-id="' + j.id + '">Reintentar</button>');
+    acts.push('<button class="btn sm ghost" data-act="retry" data-id="' + j.id + '">' + esc(t("Retry")) + '</button>');
     acts.push('<button class="btn sm ghost danger" data-act="delete" data-id="' + j.id + '">✕</button>');
   }
   if (j.status === "queued") {
     acts.push('<button class="btn sm ghost" data-act="job-format" data-id="' + j.id +
-      '" title="Cambiar el formato de salida de este trabajo">🎞 Formato</button>');
+      '" title="' + esc(t("Change the output format of this job")) + '">' + esc(t("🎞 Format")) + '</button>');
     acts.push('<button class="btn sm ghost" data-act="job-script" data-id="' + j.id +
-      '" title="Poner o quitar un script de Python a este trabajo">⚙ Script</button>');
+      '" title="' + esc(t("Add or remove a Python script for this job")) + '">' + esc(t("⚙ Script")) + '</button>');
   }
-  acts.push('<button class="btn sm" data-act="details" data-id="' + j.id + '">Detalles</button>');
+  acts.push('<button class="btn sm" data-act="details" data-id="' + j.id + '">' + esc(t("Details")) + '</button>');
 
   return '<div class="job ' + j.status + '" data-id="' + j.id + '">' +
     '<div class="job-head">' +
       '<span class="chip ' + j.status + '">' + (chipLabels[j.status] || j.status) + '</span>' +
       '<span class="job-title">' + esc(j.file_name) + ' <span class="muted">·</span> ' + esc(j.scene) + '</span>' +
-      (scriptTxt ? '<span class="chip script" title="script de Python que corre antes de renderizar">⚙ ' +
+      (scriptTxt ? '<span class="chip script" title="' +
+        esc(t("Python script that runs before rendering")) + '">⚙ ' +
         esc(scriptTxt) + '</span>' : '') +
       (fmtTxt ? '<span class="chip fmt' + ((j.overrides || {}).format ? ' own' : '') +
-        '" title="' + ((j.overrides || {}).format ? 'formato forzado para este trabajo' : 'formato guardado en el .blend') +
+        '" title="' + esc((j.overrides || {}).format ? t("format forced for this job") : t("format saved in the .blend")) +
         '">' + esc(fmtTxt) + '</span>' : '') +
-      '<span class="job-sub muted">frames ' + fr.start + '–' + fr.end + (ovs ? " · " + ovs : "") + '</span>' +
+      '<span class="job-sub muted">' + esc(tf("frames {a}–{b}", { a: fr.start, b: fr.end })) +
+        (ovs ? " · " + esc(ovs) : "") + '</span>' +
       '<span class="job-actions">' + acts.join("") + '</span>' +
     '</div>' +
     '<div class="bar ' + j.status + '"><div></div></div>' +
@@ -599,7 +611,7 @@ async function loadDetails(jid) {
   if (!box || box.dataset.loaded) return;
   let data;
   try { data = await api("/api/jobs/" + jid + "/outputs"); }
-  catch (e) { box.innerHTML = '<div class="muted">Sin datos de salida.</div>'; return; }
+  catch (e) { box.innerHTML = '<div class="muted">' + esc(t("No output data.")) + '</div>'; return; }
   const outs = (data.outputs || []).filter(o => o.exists);
   // EXR, TIFF, DPX… el navegador no los dibuja: para esos solo queda el MP4.
   const shots = outs.filter(o => isWebImage(o.name));
@@ -616,17 +628,17 @@ async function loadDetails(jid) {
   const notes = [];
   if (outs.length && !shots.length) {
     notes.push(fileExt(outs[0].name).replace(".", "").toUpperCase() +
-      ": el navegador no puede mostrar estos archivos");
+      t(": the browser cannot display these files"));
   }
-  if (prev.note) notes.push("sin preview (" + prev.note + ")");
-  else if (outs.length > 1 && !prev.video) notes.push("preview MP4 no disponible");
+  if (prev.note) notes.push(tf("no preview ({why})", { why: prev.note }));
+  else if (outs.length > 1 && !prev.video) notes.push(t("preview MP4 not available"));
   html += '<div class="details-actions">' +
-    '<button class="btn sm ghost" data-act="open-folder" data-id="' + jid + '">Abrir carpeta de salida</button>' +
-    '<button class="btn sm ghost" data-act="view-log" data-id="' + jid + '">Ver log</button>' +
-    '<span class="muted">' + outs.length + ' archivo(s) de salida' +
+    '<button class="btn sm ghost" data-act="open-folder" data-id="' + jid + '">' + esc(t("Open output folder")) + '</button>' +
+    '<button class="btn sm ghost" data-act="view-log" data-id="' + jid + '">' + esc(t("View log")) + '</button>' +
+    '<span class="muted">' + esc(tf("{n} output file(s)", { n: outs.length })) +
     (notes.length ? " · " + notes.join(" · ") : "") +
     '</span></div>';
-  box.innerHTML = html || '<div class="muted">Aún sin salidas para mostrar.</div>';
+  box.innerHTML = html || '<div class="muted">' + esc(t("Nothing to show yet.")) + '</div>';
   box.dataset.loaded = "1";
 }
 
@@ -634,17 +646,18 @@ async function loadDetails(jid) {
 let fmtTarget = null;   // {mode: "job", id} | {mode: "queue"}
 
 function openFormatModal(mode, job) {
-  if (!FMT) { toast("Aun cargando los formatos de Blender...", "warn"); return; }
+  if (!FMT) { toast(t("Still loading Blender's formats…"), "warn"); return; }
   const ov = (job && job.overrides) || {};
   const v = {};
   for (const k of FORMAT_KEYS) if (ov[k] != null && ov[k] !== "") v[k] = ov[k];
   fmtTarget = mode === "job" ? { mode: "job", id: job.id } : { mode: "queue" };
 
   const queued = ((state && state.jobs) || []).filter(j => j.status === "queued");
-  $("#fmtTitle").textContent = mode === "job" ? "Formato del trabajo" : "Formato de la cola";
+  $("#fmtTitle").textContent = mode === "job" ? t("Job format") : t("Queue format");
   $("#fmtScope").textContent = mode === "job"
-    ? job.file_name + " " + job.scene + " - ahora escribe: " + (jobFormatText(job) || "lo que traiga el .blend")
-    : "Se aplica a los " + queued.length + " trabajo(s) en cola; los que ya terminaron no se tocan.";
+    ? tf("{f} · {s} — now writes: {fmt}",
+         { f: job.file_name, s: job.scene, fmt: jobFormatText(job) || t("whatever the .blend has") })
+    : tf("Applies to the {n} queued job(s); finished ones are left alone.", { n: queued.length });
   const root = $("#fmtFields");
   root.innerHTML = formatFields(v);
   syncFormatFields(root, v);
@@ -656,11 +669,11 @@ function updateFmtPreview() {
   const el = $("#fmtPreview");
   if (!el) return;
   const v = readFormat($("#fmtFields"));
-  if (!v.format) { el.textContent = "Cada escena conserva el formato guardado en su .blend."; return; }
+  if (!v.format) { el.textContent = t("Each scene keeps the format saved in its .blend."); return; }
   const sp = fmtSpec(v.format) || {};
   const ext = fmtExt(v.format, v.ffmpeg_container);
-  el.textContent = sp.movie ? ("Salida: un archivo de video " + ext)
-                            : ("Salida: secuencia de archivos " + ext);
+  el.textContent = sp.movie ? tf("Output: one video file {ext}", { ext })
+                            : tf("Output: a sequence of {ext} files", { ext });
 }
 
 $("#fmtApply").addEventListener("click", async () => {
@@ -668,18 +681,18 @@ $("#fmtApply").addEventListener("click", async () => {
   try {
     if (fmtTarget && fmtTarget.mode === "job") {
       const job = ((state && state.jobs) || []).find(j => j.id === fmtTarget.id);
-      if (!job) throw new Error("El trabajo ya no esta en la cola");
+      if (!job) throw new Error(t("The job is no longer in the queue"));
       const ov = {};
       for (const [k, val] of Object.entries(job.overrides || {})) {
         if (!FORMAT_KEYS.includes(k)) ov[k] = val;
       }
       Object.assign(ov, v);
       await api("/api/jobs/" + fmtTarget.id, { method: "PATCH", body: JSON.stringify({ overrides: ov }) });
-      toast("Formato actualizado", "ok");
+      toast(t("Format updated"), "ok");
     } else {
       const r = await api("/api/jobs/format", { method: "POST", body: JSON.stringify(v) });
       const n = (r.changed || []).length;
-      toast(n ? ("Formato aplicado a " + n + " trabajo(s)") : "No habia trabajos en cola", n ? "ok" : "warn");
+      toast(n ? tf("Format applied to {n} job(s)", { n }) : t("No queued jobs"), n ? "ok" : "warn");
     }
     closeModal("fmtModal");
     queueSig = null;
@@ -699,14 +712,14 @@ function openScriptModal(target, preselect) {
   const queued = jobs.filter(j => j.status === "queued");
   const job = target && target.mode === "job" ? jobs.find(j => j.id === target.id) : null;
 
-  $("#scriptTitle").textContent = target ? "Elegir script" : "Scripts de Python";
-  $("#scriptScope").textContent = !target ? "Se guardan en la app y siguen aquí la próxima vez."
+  $("#scriptTitle").textContent = target ? t("Choose script") : t("Python scripts");
+  $("#scriptScope").textContent = !target ? t("They are stored in the app and will still be here next time.")
     : target.mode === "job"
-      ? (job ? job.file_name + " · " + job.scene + " — ahora: " +
-               ((job.overrides || {}).script_name || "sin script") : "")
-      : "Se aplica a los " + queued.length + " trabajo(s) en cola.";
+      ? (job ? tf("{f} · {s} — now: {script}", { f: job.file_name, s: job.scene,
+                  script: (job.overrides || {}).script_name || t("no script") }) : "")
+      : tf("Applies to the {n} queued job(s).", { n: queued.length });
   $("#scriptApply").classList.toggle("hidden", !target);
-  $("#scriptApply").textContent = target && target.mode === "queue" ? "Aplicar a la cola" : "Aplicar al trabajo";
+  $("#scriptApply").textContent = target && target.mode === "queue" ? t("Apply to the queue") : t("Apply to the job");
 
   const want = preselect !== undefined ? preselect
     : (job ? (job.overrides || {}).script_id || "" : (scriptsList()[0] || {}).id || "");
@@ -736,7 +749,7 @@ function editorIsDirty() {
 
 /** Guarda el script abierto (alta o edición) y devuelve su id. */
 async function saveScript() {
-  const body = { name: $("#scriptName").value.trim() || "Sin nombre", code: $("#scriptCode").value };
+  const body = { name: $("#scriptName").value.trim() || t("Untitled"), code: $("#scriptCode").value };
   const r = scriptEditing
     ? await api("/api/scripts/" + scriptEditing, { method: "PATCH", body: JSON.stringify(body) })
     : await api("/api/scripts", { method: "POST", body: JSON.stringify(body) });
@@ -747,7 +760,7 @@ async function saveScript() {
 }
 
 $("#scriptPick").addEventListener("change", e => {
-  if (editorIsDirty() && !confirm("Hay cambios sin guardar en el script. ¿Descartarlos?")) {
+  if (editorIsDirty() && !confirm(t("Unsaved changes in the script. Discard them?"))) {
     e.target.value = scriptEditing;
     return;
   }
@@ -765,23 +778,23 @@ $("#scriptDup").addEventListener("click", () => {
   if (!sc) return;
   scriptEditing = "";
   $("#scriptPick").value = "";
-  $("#scriptName").value = sc.name + " (copia)";
+  $("#scriptName").value = sc.name + t(" (copy)");
   $("#scriptCode").value = sc.code;
 });
 
 $("#scriptSave").addEventListener("click", async () => {
-  try { await saveScript(); toast("Script guardado", "ok"); }
+  try { await saveScript(); toast(t("Script saved"), "ok"); }
   catch (err) { toast(String(err.message || err), "error"); }
 });
 
 $("#scriptDel").addEventListener("click", async () => {
   const sc = scriptById(scriptEditing);
-  if (!sc || !confirm("¿Borrar «" + sc.name + "» de la biblioteca?\nLos trabajos que ya lo llevan conservan su copia.")) return;
+  if (!sc || !confirm(tf("Delete «{name}» from the library?\nJobs that already carry it keep their copy.", { name: sc.name }))) return;
   try {
     await api("/api/scripts/" + sc.id, { method: "DELETE" });
     await tick();
     fillScriptPick((scriptsList()[0] || {}).id || "");
-    toast("Script borrado", "ok");
+    toast(t("Script deleted"), "ok");
   } catch (err) { toast(String(err.message || err), "error"); }
 });
 
@@ -791,19 +804,19 @@ $("#scriptApply").addEventListener("click", async () => {
     if (id && editorIsDirty()) id = await saveScript();   // aplica lo que ves, no lo viejo
     if (scriptTarget && scriptTarget.mode === "job") {
       const job = ((state && state.jobs) || []).find(j => j.id === scriptTarget.id);
-      if (!job) throw new Error("El trabajo ya no está en la cola");
+      if (!job) throw new Error(t("The job is no longer in the queue"));
       const ov = {};
       for (const [k, v] of Object.entries(job.overrides || {})) {
         if (!["script", "script_name", "script_id"].includes(k)) ov[k] = v;
       }
       if (id) ov.script_id = id;
       await api("/api/jobs/" + scriptTarget.id, { method: "PATCH", body: JSON.stringify({ overrides: ov }) });
-      toast(id ? "Script aplicado al trabajo" : "Script quitado del trabajo", "ok");
+      toast(id ? t("Script applied to the job") : t("Script removed from the job"), "ok");
     } else {
       const r = await api("/api/jobs/script", { method: "POST", body: JSON.stringify({ script_id: id }) });
       const n = (r.changed || []).length;
-      toast(n ? ((id ? "Script aplicado a " : "Script quitado de ") + n + " trabajo(s)") : "No había trabajos en cola",
-            n ? "ok" : "warn");
+      toast(n ? tf(id ? "Script applied to {n} job(s)" : "Script removed from {n} job(s)", { n })
+              : t("No queued jobs"), n ? "ok" : "warn");
     }
     closeModal("scriptModal");
     queueSig = null;
@@ -833,9 +846,9 @@ document.addEventListener("click", async (e) => {
       const abs = (input && input.value) || (tag ? tag.dataset.abs : "") || "";
       openFs("pick-dir", input, abs ? abs.replace(/[\\/][^\\/]*$/, "") : "");
     }
-    else if (act === "inspect") { await api("/api/files/" + btn.dataset.id + "/inspect", { method: "POST" }); toast("Re-inspeccionando…"); }
+    else if (act === "inspect") { await api("/api/files/" + btn.dataset.id + "/inspect", { method: "POST" }); toast(t("Re-inspecting…")); }
     else if (act === "remove-file") {
-      if (confirm("¿Quitar este archivo de la lista? (no se borra del disco)")) {
+      if (confirm(t("Remove this file from the list? (it is not deleted from disk)"))) {
         await api("/api/files/" + btn.dataset.id, { method: "DELETE" });
       }
     }
@@ -904,7 +917,7 @@ async function enqueueScene(row) {
   Object.assign(ov, d.fmt || {});
   if (Object.keys(ov).length) body.overrides = ov;
   await api("/api/jobs", { method: "POST", body: JSON.stringify(body) });
-  toast("Encolado: " + row.dataset.scene, "ok");
+  toast(t("Queued: ") + row.dataset.scene, "ok");
 }
 
 async function enqueueAll(fid) {
@@ -921,11 +934,11 @@ function showFrame(jid, frame) {
   img.dataset.jid = jid;
   img.dataset.frame = String(frame);
   img.src = "/api/jobs/" + jid + "/frames/" + frame;
-  $("#frameLabel").textContent = (job ? job.file_name + " · " + job.scene : "Frame") + " — frame " + frame;
+  $("#frameLabel").textContent = (job ? job.file_name + " · " + job.scene : t("Frame")) + " — frame " + frame;
   const pos = list.indexOf(frame);
   $("#frameInfo").textContent = (pos >= 0 && list.length
-    ? (pos + 1) + " de " + list.length + " · "
-    : "") + "usa ← → para navegar";
+    ? tf("{i} of {n} · ", { i: pos + 1, n: list.length })
+    : "") + t("use ← → to browse");
   $("#framePrev").disabled = pos === 0;
   $("#frameNext").disabled = pos >= 0 && pos === list.length - 1;
 }
@@ -958,7 +971,7 @@ function setupDropzone() {
   dz.addEventListener("drop", e => {
     const fl = Array.from(e.dataTransfer.files || []).filter(f => f.name.toLowerCase().endsWith(".blend"));
     if (fl.length) uploadFiles(fl);
-    else toast("Solo se aceptan archivos .blend", "warn");
+    else toast(t("Only .blend files are accepted"), "warn");
   });
   $("#btnBrowseFiles").addEventListener("click", () => $("#fileInput").click());
   $("#fileInput").addEventListener("change", e => {
@@ -973,19 +986,19 @@ function uploadFiles(fl) {
   const fd = new FormData();
   for (const f of fl) fd.append("files", f, f.name);
   const status = $("#uploadStatus");
-  status.textContent = "Subiendo " + fl.length + " archivo(s)…";
+  status.textContent = tf("Uploading {n} file(s)…", { n: fl.length });
   const xhr = new XMLHttpRequest();
   xhr.open("POST", "/api/files/upload");
   xhr.upload.onprogress = e => {
-    if (e.lengthComputable) status.textContent = "Subiendo… " + Math.round(e.loaded / e.total * 100) + "%";
+    if (e.lengthComputable) status.textContent = tf("Uploading… {p}%", { p: Math.round(e.loaded / e.total * 100) });
   };
   xhr.onload = () => {
     status.textContent = "";
-    if (xhr.status >= 200 && xhr.status < 300) toast("Archivos agregados; inspeccionando…", "ok");
-    else toast("Error al subir (HTTP " + xhr.status + ")", "error");
+    if (xhr.status >= 200 && xhr.status < 300) toast(t("Files added; inspecting…"), "ok");
+    else toast(tf("Upload error (HTTP {s})", { s: xhr.status }), "error");
     tick();
   };
-  xhr.onerror = () => { status.textContent = ""; toast("Error de red al subir", "error"); };
+  xhr.onerror = () => { status.textContent = ""; toast(t("Network error while uploading"), "error"); };
   xhr.send(fd);
 }
 
@@ -997,11 +1010,11 @@ async function openFs(mode, targetInput = null, startPath = "") {
   fs.targetInput = targetInput || null;
   if (startPath) fs.path = startPath;
   fs.selected = new Set();
-  $("#fsTitle").textContent = mode === "pick-dir" ? "Elegir carpeta de salida" : "Seleccionar archivos .blend";
+  $("#fsTitle").textContent = mode === "pick-dir" ? t("Choose output folder") : t("Select .blend files");
   $("#fsHint").textContent = mode === "pick-dir"
-    ? "Navega a la carpeta y presiona “Usar esta carpeta”."
-    : "Navega y marca los .blend que quieras agregar (se encolarán al inspeccionarse).";
-  $("#fsPickDir").textContent = mode === "pick-dir" ? "Usar esta carpeta" : "Agregar todos los .blend de esta carpeta";
+    ? t("Browse to the folder and press “Use this folder”.")
+    : t("Browse and tick the .blend files you want to add (they are queued once inspected).");
+  $("#fsPickDir").textContent = mode === "pick-dir" ? t("Use this folder") : t("Add every .blend in this folder");
   $("#fsAdd").classList.toggle("hidden", mode === "pick-dir");
   $("#fsModal").classList.remove("hidden");
   await fsGo(mode === "pick-dir" ? (fs.path || "") : "");
@@ -1023,7 +1036,7 @@ async function fsGo(path) {
     return '<label class="fs-item blend"><input type="checkbox" value="' + esc(en.path) + '"' +
       (fs.selected.has(en.path) ? " checked" : "") + '><span class="ico">🎬</span>' +
       '<span class="fname">' + esc(en.name) + '</span><span class="muted">' + fmtBytes(en.size) + '</span></label>';
-  }).join("") || '<div class="muted" style="padding:8px">(carpeta vacía)</div>';
+  }).join("") || '<div class="muted" style="padding:8px">' + esc(t("(empty folder)")) + '</div>';
 }
 
 $("#fsList").addEventListener("click", e => {
@@ -1042,11 +1055,11 @@ $("#fsPath").addEventListener("keydown", e => { if (e.key === "Enter") fsGo($("#
 
 $("#fsAdd").addEventListener("click", async () => {
   const paths = Array.from(fs.selected);
-  if (!paths.length) { toast("Selecciona al menos un .blend", "warn"); return; }
+  if (!paths.length) { toast(t("Select at least one .blend"), "warn"); return; }
   try {
     await api("/api/files/add", { method: "POST", body: JSON.stringify({ paths }) });
     closeModal("fsModal");
-    toast("Agregados: " + paths.length + " archivo(s); inspeccionando…", "ok");
+    toast(tf("Added: {n} file(s); inspecting…", { n: paths.length }), "ok");
   } catch (err) { toast(String(err.message || err), "error"); }
   tick();
 });
@@ -1068,7 +1081,7 @@ $("#fsPickDir").addEventListener("click", async () => {
   try {
     await api("/api/files/add", { method: "POST", body: JSON.stringify({ paths: [fs.path] }) });
     closeModal("fsModal");
-    toast("Carpeta agregada; inspeccionando los .blend…", "ok");
+    toast(t("Folder added; inspecting the .blend files…"), "ok");
   } catch (err) { toast(String(err.message || err), "error"); }
   tick();
 });
@@ -1080,7 +1093,8 @@ function fillSettings() {
   $("#setBlender").value = s.blender_path || b.path || "";
   $("#setNotif").checked = !!s.notifications;
   $("#setPreview").checked = !!s.preview_video;
-  $("#setBlenderStatus").textContent = b.ok ? ("OK — " + b.version) : ("No encontrado — " + (b.error || ""));
+  $("#setBlenderStatus").textContent = b.ok ? tf("OK — {v}", { v: b.version })
+                                              : tf("Not found — {e}", { e: b.error || "" });
 }
 
 $("#btnSettings").addEventListener("click", () => {
@@ -1093,7 +1107,8 @@ $("#setBlenderCheck").addEventListener("click", async () => {
     const p = $("#setBlender").value.trim();
     await api("/api/settings", { method: "POST", body: JSON.stringify({ blender_path: p }) });
     const info = await api("/api/blender/check?force=1");
-    $("#setBlenderStatus").textContent = info.ok ? ("OK — " + info.version) : ("No encontrado — " + (info.error || ""));
+    $("#setBlenderStatus").textContent = info.ok ? tf("OK — {v}", { v: info.version })
+                                                 : tf("Not found — {e}", { e: info.error || "" });
   } catch (err) { toast(String(err.message || err), "error"); }
 });
 
@@ -1108,13 +1123,13 @@ $("#setSave").addEventListener("click", async () => {
       })
     });
     closeModal("settingsModal");
-    toast("Ajustes guardados", "ok");
+    toast(t("Settings saved"), "ok");
     tick();
   } catch (err) { toast(String(err.message || err), "error"); }
 });
 
 $("#setNotifyTest").addEventListener("click", async () => {
-  try { await api("/api/notify/test", { method: "POST" }); toast("Notificación de prueba enviada", "ok"); }
+  try { await api("/api/notify/test", { method: "POST" }); toast(t("Test notification sent"), "ok"); }
   catch (err) { toast(String(err.message || err), "error"); }
 });
 
@@ -1122,7 +1137,7 @@ $("#setNotifyTest").addEventListener("click", async () => {
 async function viewLog(jid) {
   try {
     const d = await api("/api/jobs/" + jid + "/log?tail=500");
-    $("#logContent").textContent = d.log || "(log vacío)";
+    $("#logContent").textContent = d.log || t("(empty log)");
     $("#logModal").classList.remove("hidden");
   } catch (err) { toast(String(err.message || err), "error"); }
 }
@@ -1146,9 +1161,18 @@ $("#btnPause").addEventListener("click", async () => {
 });
 
 $("#btnShutdown").addEventListener("click", async () => {
-  if (!confirm("¿Cerrar BlendQueue?\nSe detiene la cola y se apaga el servidor (la ventana se cierra).")) return;
+  if (!confirm(t("Quit BlendQueue?\nThe queue stops and the server shuts down (its window closes)."))) return;
   try { await api("/api/shutdown", { method: "POST" }); } catch (e) { }
-  toast("BlendQueue se está cerrando… ya puedes cerrar esta pestaña.", "warn", 12000);
+  toast(t("BlendQueue is shutting down… you can close this tab now."), "warn", 12000);
 });
 
+$("#langSel").value = LANG;
+$("#langSel").addEventListener("change", e => {
+  setLang(e.target.value);
+  filesSig = null;   // re-dibuja todo lo que se arma en JS
+  queueSig = null;
+  tick();
+});
+
+applyLang();
 setupDropzone();

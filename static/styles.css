@@ -366,6 +366,8 @@ code { background: #10141b; border: 1px solid var(--border); border-radius: 5px;
 }
 .frame-nav { display: flex; align-items: center; gap: 10px; padding: 10px 16px 6px; }
 
+select.input.lang { padding: 4px 6px; font-size: 12px; }
+
 /* ---------- formato de salida ---------- */
 .head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
@@ -382,7 +384,7 @@ code { background: #10141b; border: 1px solid var(--border); border-radius: 5px;
 }
 .overrides .fmt-fields { margin-top: 4px; }
 .overrides .fmt-fields::before {
-  content: "Formato de salida";
+  content: attr(data-label);
   flex-basis: 100%;
   font-size: 11px;
   letter-spacing: .4px;

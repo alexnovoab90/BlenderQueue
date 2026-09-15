@@ -11,6 +11,9 @@ HTML/CSS/JS sin paso de compilación.
 
 *[Read this in English](README.md)*
 
+La interfaz sale en **inglés** por defecto; en la cabecera hay un selector **EN / ES** y la
+elección se recuerda en ese navegador.
+
 ![BlendQueue](docs/screenshot.png)
 
 ## Para qué sirve
@@ -144,6 +147,7 @@ core/worker.py                  worker secuencial: proceso, progreso, previews, 
 core/renderer.py                armado del comando, código de overrides, parseo, ffmpeg
 core/formats.py                 catálogo de formatos de salida y validación de overrides
 blender_side/inspect_blend.py   corre DENTRO de Blender y reporta escenas y capacidades en JSON
+static/i18n.js                  idiomas de la interfaz (inglés en el código + mapa al español)
 static/                         interfaz web (sin build)
 tests/                          pruebas de humo y generador de .blend de prueba
 data/                           estado, logs y scripts por trabajo, uploads, previews (fuera de git)

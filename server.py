@@ -62,11 +62,11 @@ async def only_local(request: Request, call_next):
     el Origin sean locales antes de aceptar algo que cambie estado."""
     host = (request.headers.get("host") or "").rsplit(":", 1)[0]
     if host and host not in LOCAL_HOSTS:
-        return JSONResponse({"detail": "Solo se aceptan conexiones locales"}, status_code=403)
+        return JSONResponse({"detail": "Local connections only"}, status_code=403)
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin")
         if origin and (urlparse(origin).hostname or "") not in LOCAL_HOSTS:
-            return JSONResponse({"detail": "Origen no permitido"}, status_code=403)
+            return JSONResponse({"detail": "Origin not allowed"}, status_code=403)
     return await call_next(request)
 
 
@@ -128,11 +128,11 @@ class ScriptBody(BaseModel):
 def _script_fields(body: ScriptBody, partial: bool) -> dict:
     fields = {}
     if body.name is not None or not partial:
-        fields["name"] = (body.name or "").strip()[:120] or "Sin nombre"
+        fields["name"] = (body.name or "").strip()[:120] or "Untitled"
     if body.code is not None or not partial:
         code = body.code or ""
         if len(code) > MAX_SCRIPT:
-            raise HTTPException(400, f"El script supera {MAX_SCRIPT} caracteres")
+            raise HTTPException(400, f"Script exceeds {MAX_SCRIPT} characters")
         fields["code"] = code
     return fields
 
@@ -151,7 +151,7 @@ def api_script_add(body: ScriptBody):
 @app.patch("/api/scripts/{sid}")
 def api_script_update(sid: str, body: ScriptBody):
     if not store.get_script(sid):
-        raise HTTPException(404, "Script no encontrado")
+        raise HTTPException(404, "Script not found")
     rec = store.update_script(sid, **_script_fields(body, partial=True))
     return {"script": rec}
 
@@ -160,7 +160,7 @@ def api_script_update(sid: str, body: ScriptBody):
 def api_script_delete(sid: str):
     """Borra el script de la biblioteca; los trabajos que ya lo llevan conservan su copia."""
     if not store.delete_script(sid):
-        raise HTTPException(404, "Script no encontrado")
+        raise HTTPException(404, "Script not found")
     return {"ok": True}
 
 
@@ -184,7 +184,7 @@ def api_files_add(body: AddFilesBody):
         if not p:
             continue
         if not os.path.exists(p):
-            raise HTTPException(404, f"No existe: {p}")
+            raise HTTPException(404, f"Does not exist: {p}")
         if os.path.isdir(p):
             for name in sorted(os.listdir(p)):
                 fp = os.path.join(p, name)
@@ -192,7 +192,7 @@ def api_files_add(body: AddFilesBody):
                     added.append(_add_and_inspect(fp))
             continue
         if not p.lower().endswith(".blend"):
-            raise HTTPException(400, f"No es un archivo .blend: {p}")
+            raise HTTPException(400, f"Not a .blend file: {p}")
         added.append(_add_and_inspect(p))
     return {"added": added}
 
@@ -221,7 +221,7 @@ async def api_files_upload(files: list[UploadFile] = FastAPIFile(...)):
 @app.post("/api/files/{fid}/inspect")
 def api_file_inspect(fid: str):
     if not store.get_file(fid):
-        raise HTTPException(404, "Archivo no encontrado")
+        raise HTTPException(404, "File not found")
     inspector.request(fid)
     return {"ok": True}
 
@@ -230,9 +230,9 @@ def api_file_inspect(fid: str):
 def api_file_delete(fid: str):
     for j in store.jobs():
         if j.get("file_id") == fid and j.get("status") in ("queued", "running"):
-            raise HTTPException(409, "El archivo tiene trabajos en cola o renderizando.")
+            raise HTTPException(409, "This file has queued or running jobs.")
     if not store.remove_file(fid):
-        raise HTTPException(404, "Archivo no encontrado")
+        raise HTTPException(404, "File not found")
     return {"ok": True}
 
 
@@ -261,7 +261,7 @@ def _clean_overrides(raw: dict | None) -> dict:
         try:
             val = int(val)
         except (TypeError, ValueError):
-            raise HTTPException(400, f"Valor inválido para {key}")
+            raise HTTPException(400, f"Invalid value for {key}")
         if lo <= val <= hi:
             out[key] = val
     out_dir = str(ov.get("output_dir") or "").strip().strip('"')
@@ -276,9 +276,9 @@ def _clean_overrides(raw: dict | None) -> dict:
     if code is None and sid:
         rec = store.get_script(sid)
         if not rec:
-            raise HTTPException(404, "El script ya no está en la biblioteca")
+            raise HTTPException(404, "That script is no longer in the library")
         out["script_id"] = sid
-        out["script_name"] = rec.get("name") or "sin nombre"
+        out["script_name"] = rec.get("name") or "untitled"
         out["script"] = rec.get("code") or ""
     elif code:
         out["script"] = str(code)[:MAX_SCRIPT]
@@ -299,9 +299,9 @@ def _clean_frames(raw: dict | None, scene: dict | None) -> dict:
         start = int(fr_in["start"]) if fr_in.get("start") not in (None, "") else int(scene.get("frame_start") or 1)
         end = int(fr_in["end"]) if fr_in.get("end") not in (None, "") else int(scene.get("frame_end") or start)
     except (TypeError, ValueError):
-        raise HTTPException(400, "Rango de frames inválido")
+        raise HTTPException(400, "Invalid frame range")
     if end < start:
-        raise HTTPException(400, f"Rango de frames inválido: {start}–{end}")
+        raise HTTPException(400, f"Invalid frame range: {start}–{end}")
     return {"start": start, "end": end}
 
 
@@ -309,14 +309,14 @@ def _scene_of(frec: dict, name: str) -> dict:
     for s in (frec.get("report") or {}).get("scenes", []):
         if s.get("name") == name:
             return s
-    raise HTTPException(400, "Escena no encontrada en el reporte. Re-inspecciona el archivo.")
+    raise HTTPException(400, "Scene not found in the report. Re-inspect the file.")
 
 
 @app.post("/api/jobs")
 def api_job_add(body: JobBody):
     frec = store.get_file(body.file_id)
     if not frec:
-        raise HTTPException(404, "Archivo no encontrado")
+        raise HTTPException(404, "File not found")
     scene = _scene_of(frec, body.scene)
     job = {
         "file_id": body.file_id,
@@ -343,9 +343,9 @@ def api_job_patch(jid: str, body: JobPatchBody):
     """Edita un trabajo que aún está en cola (formato, salida, frames…)."""
     job = store.get_job(jid)
     if not job:
-        raise HTTPException(404, "Trabajo no encontrado")
+        raise HTTPException(404, "Job not found")
     if job.get("status") != "queued":
-        raise HTTPException(409, "Solo se pueden editar trabajos que siguen en cola")
+        raise HTTPException(409, "Only queued jobs can be edited")
     fields = {}
     if body.overrides is not None:
         fields["overrides"] = _clean_overrides(body.overrides)
@@ -409,8 +409,8 @@ def api_jobs_script(body: JobScriptBody):
     if sid:
         rec = store.get_script(sid)
         if not rec:
-            raise HTTPException(404, "El script ya no está en la biblioteca")
-        patch = {"script_id": sid, "script_name": rec.get("name") or "sin nombre",
+            raise HTTPException(404, "That script is no longer in the library")
+        patch = {"script_id": sid, "script_name": rec.get("name") or "untitled",
                  "script": rec.get("code") or ""}
     wanted = set(body.job_ids) if body.job_ids else None
     changed = []
@@ -434,7 +434,7 @@ class MoveBody(BaseModel):
 @app.post("/api/jobs/{jid}/move")
 def api_job_move(jid: str, body: MoveBody):
     if not store.get_job(jid):
-        raise HTTPException(404, "Trabajo no encontrado")
+        raise HTTPException(404, "Job not found")
     moved = store.move_job(jid, 1 if body.direction >= 0 else -1)
     return {"ok": True, "moved": moved}
 
@@ -442,7 +442,7 @@ def api_job_move(jid: str, body: MoveBody):
 @app.post("/api/jobs/{jid}/cancel")
 def api_job_cancel(jid: str):
     if not store.get_job(jid):
-        raise HTTPException(404, "Trabajo no encontrado")
+        raise HTTPException(404, "Job not found")
     worker.cancel(jid)
     return {"ok": True}
 
@@ -450,16 +450,16 @@ def api_job_cancel(jid: str):
 @app.post("/api/jobs/{jid}/retry")
 def api_job_retry(jid: str):
     if not store.get_job(jid):
-        raise HTTPException(404, "Trabajo no encontrado")
+        raise HTTPException(404, "Job not found")
     if not worker.retry(jid):
-        raise HTTPException(409, "El trabajo está renderizando: cancélalo antes de reintentar")
+        raise HTTPException(409, "The job is rendering: cancel it before retrying")
     return {"ok": True}
 
 
 @app.delete("/api/jobs/{jid}")
 def api_job_delete(jid: str):
     if not store.get_job(jid):
-        raise HTTPException(404, "Trabajo no encontrado")
+        raise HTTPException(404, "Job not found")
     worker.remove(jid)
     return {"ok": True}
 
@@ -468,7 +468,7 @@ def api_job_delete(jid: str):
 def api_job_log(jid: str, tail: int = 300):
     job = store.get_job(jid)
     if not job:
-        raise HTTPException(404, "Trabajo no encontrado")
+        raise HTTPException(404, "Job not found")
     log_path = config.LOGS_DIR / f"job_{jid}.log"
     if not log_path.exists():
         return {"log": ""}
@@ -494,7 +494,7 @@ def _job_frame_files(job: dict) -> list:
 def api_job_outputs(jid: str):
     job = store.get_job(jid)
     if not job:
-        raise HTTPException(404, "Trabajo no encontrado")
+        raise HTTPException(404, "Job not found")
     return {"outputs": _job_frame_files(job), "preview": job.get("preview") or {}}
 
 
@@ -502,7 +502,7 @@ def api_job_outputs(jid: str):
 def api_job_frame(jid: str, frame: int):
     job = store.get_job(jid)
     if not job:
-        raise HTTPException(404, "Trabajo no encontrado")
+        raise HTTPException(404, "Job not found")
     files = [f for f in _job_frame_files(job) if f["exists"]]
     for f in files:
         if f["frame"] == frame:
@@ -511,17 +511,17 @@ def api_job_frame(jid: str, frame: int):
     idx = frame - fstart
     if 0 <= idx < len(files):
         return FileResponse(files[idx]["path"])
-    raise HTTPException(404, "Frame no encontrado")
+    raise HTTPException(404, "Frame not found")
 
 
 @app.get("/api/jobs/{jid}/video")
 def api_job_video(jid: str):
     job = store.get_job(jid)
     if not job:
-        raise HTTPException(404, "Trabajo no encontrado")
+        raise HTTPException(404, "Job not found")
     video = (job.get("preview") or {}).get("video")
     if not video or not os.path.exists(video):
-        raise HTTPException(404, "Sin video de preview")
+        raise HTTPException(404, "No preview video")
     return FileResponse(video, media_type="video/mp4")
 
 
@@ -530,7 +530,7 @@ def api_job_open(jid: str):
     """Abre la carpeta de salida del trabajo (seleccionando el primer frame existente)."""
     job = store.get_job(jid)
     if not job:
-        raise HTTPException(404, "Trabajo no encontrado")
+        raise HTTPException(404, "Job not found")
     files = [f for f in _job_frame_files(job) if f["exists"]]
     target_dir = None
     if files:
@@ -540,7 +540,7 @@ def api_job_open(jid: str):
         if ov_dir and os.path.isdir(ov_dir):
             target_dir = ov_dir
     if not target_dir or not os.path.isdir(target_dir):
-        raise HTTPException(404, "Sin carpeta de salida disponible")
+        raise HTTPException(404, "No output folder available")
     try:
         os.startfile(target_dir)
     except Exception as exc:
@@ -557,7 +557,7 @@ class OpenBody(BaseModel):
 def api_open(body: OpenBody):
     p = (body.path or "").strip()
     if not os.path.exists(p):
-        raise HTTPException(404, "La ruta no existe")
+        raise HTTPException(404, "That path does not exist")
     try:
         if os.path.isdir(p):
             os.startfile(p)  # noqa: S606 (app local)
@@ -580,7 +580,7 @@ def api_fs_list(path: str = ""):
             if os.path.exists(root):
                 drives.append({"name": root, "path": root, "type": "drive"})
         favs = []
-        for label, sub in (("Inicio", ""), ("Escritorio", "Desktop"), ("Descargas", "Downloads"),
+        for label, sub in (("Home", ""), ("Desktop", "Desktop"), ("Downloads", "Downloads"),
                            ("Developer", "Developer"), ("Videos", "Videos")):
             p = os.path.join(home, sub) if sub else home
             if os.path.isdir(p):
@@ -589,7 +589,7 @@ def api_fs_list(path: str = ""):
 
     path = os.path.abspath(path)
     if not os.path.isdir(path):
-        raise HTTPException(404, "Carpeta no encontrada")
+        raise HTTPException(404, "Folder not found")
     parent = os.path.dirname(path.rstrip("\\/"))
     if not parent or parent == path:
         parent = None
@@ -628,7 +628,7 @@ def api_settings(body: SettingsBody):
     if body.blender_path is not None:
         bp = body.blender_path.strip()
         if bp and not os.path.exists(bp):
-            raise HTTPException(400, "La ruta de blender.exe no existe")
+            raise HTTPException(400, "That blender.exe path does not exist")
         patch["blender_path"] = bp
     if body.notifications is not None:
         patch["notifications"] = bool(body.notifications)
@@ -646,7 +646,7 @@ def api_blender_check(force: bool = False):
 
 @app.post("/api/notify/test")
 def api_notify_test():
-    ok = notifier.notify("BlendQueue", "Notificación de prueba — funciona ✓")
+    ok = notifier.notify("BlendQueue", "Test notification — it works ✓")
     return {"ok": ok}
 
 
@@ -683,7 +683,7 @@ def api_shutdown():
         os._exit(0)  # último recurso si el apagado limpio no terminó
 
     threading.Thread(target=_stop, daemon=True).start()
-    return {"ok": True, "message": "BlendQueue se está apagando…"}
+    return {"ok": True, "message": "BlendQueue is shutting down…"}
 
 
 # ---------------------------------------------------------------- entrada
@@ -692,7 +692,7 @@ _server_handle = None
 
 def main():
     global _server_handle
-    parser = argparse.ArgumentParser(description="BlendQueue — cola local de renders Blender")
+    parser = argparse.ArgumentParser(description="BlendQueue — local render queue for Blender")
     parser.add_argument("--port", type=int, default=config.DEFAULT_PORT)
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()

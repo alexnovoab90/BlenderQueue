@@ -94,8 +94,13 @@ stem and mtime.
 
 ## Conventions
 
-- Code comments, UI strings, commit messages and `README.es.md` are in Spanish; `README.md` is the
-  English entry point. Match the file you are editing.
+- **UI strings are English in the source**; `static/i18n.js` holds the English → Spanish map and
+  `t()` / `tf("{n} file(s)", {n})` translate at runtime. Static HTML text is marked with
+  `data-i18n` (plus `data-i18n-title` / `data-i18n-ph`). Adding a string means adding it in
+  English and, if it should translate, one entry in `i18n.js`; untranslated keys fall back to
+  English. Server messages are English only (few, mostly interpolated).
+- Code comments, docstrings and commit messages are in Spanish; `README.md` is the English entry
+  point and `README.es.md` its Spanish twin. Match the file you are editing.
 - Comments explain *why* (especially Blender quirks, e.g. Blender 5 filtering `file_format` by
   `media_type`), never *what*.
 - `static/index.html` cache-busts with `?v=N` on the CSS and JS: bump it when changing either.

@@ -120,7 +120,7 @@ def blender_info(path: str | None = None, force: bool = False) -> dict:
             lines = (out.stdout or "").strip().splitlines()
             ver = lines[0].strip() if lines else ""
             _BI["version"] = ver or None
-            _BI["error"] = None if ver else "Salida vacía de 'blender --version'"
+            _BI["error"] = None if ver else "Empty output from 'blender --version'"
         except Exception as exc:
             _BI["version"] = None
             _BI["error"] = str(exc)

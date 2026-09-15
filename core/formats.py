@@ -21,13 +21,13 @@ from __future__ import annotations
 FORMATS: list[dict] = [
     {"id": "PNG", "label": "PNG", "ext": ".png", "media": "IMAGE", "common": True,
      "depths": ["8", "16"], "modes": ["BW", "RGB", "RGBA"],
-     "quality_kind": "compression", "quality_label": "Compresión %"},
+     "quality_kind": "compression", "quality_label": "Compression %"},
     {"id": "JPEG", "label": "JPEG", "ext": ".jpg", "media": "IMAGE", "common": True,
      "depths": ["8"], "modes": ["BW", "RGB"],
-     "quality_kind": "quality", "quality_label": "Calidad %"},
+     "quality_kind": "quality", "quality_label": "Quality %"},
     {"id": "OPEN_EXR", "label": "OpenEXR", "ext": ".exr", "media": "IMAGE", "common": True,
      "depths": ["16", "32"], "modes": ["BW", "RGB", "RGBA"], "exr": True},
-    {"id": "OPEN_EXR_MULTILAYER", "label": "OpenEXR multicapa", "ext": ".exr",
+    {"id": "OPEN_EXR_MULTILAYER", "label": "OpenEXR multilayer", "ext": ".exr",
      "media": "MULTI_LAYER_IMAGE", "common": True,
      "depths": ["16", "32"], "modes": ["BW", "RGB", "RGBA"], "exr": True},
     {"id": "FFMPEG", "label": "Video (FFmpeg)", "ext": ".mp4", "media": "VIDEO",
@@ -35,12 +35,12 @@ FORMATS: list[dict] = [
      "depths": [], "modes": ["BW", "RGB", "RGBA"]},
     {"id": "WEBP", "label": "WebP", "ext": ".webp", "media": "IMAGE", "common": True,
      "depths": ["8"], "modes": ["BW", "RGB", "RGBA"],
-     "quality_kind": "quality", "quality_label": "Calidad %"},
+     "quality_kind": "quality", "quality_label": "Quality %"},
     {"id": "TIFF", "label": "TIFF", "ext": ".tif", "media": "IMAGE", "common": True,
      "depths": ["8", "16"], "modes": ["BW", "RGB", "RGBA"]},
     {"id": "TARGA", "label": "Targa", "ext": ".tga", "media": "IMAGE",
      "depths": ["8"], "modes": ["BW", "RGB", "RGBA"]},
-    {"id": "TARGA_RAW", "label": "Targa sin comprimir", "ext": ".tga", "media": "IMAGE",
+    {"id": "TARGA_RAW", "label": "Uncompressed Targa", "ext": ".tga", "media": "IMAGE",
      "depths": ["8"], "modes": ["BW", "RGB", "RGBA"]},
     {"id": "BMP", "label": "BMP", "ext": ".bmp", "media": "IMAGE",
      "depths": ["8"], "modes": ["BW", "RGB"]},
@@ -48,10 +48,10 @@ FORMATS: list[dict] = [
      "depths": ["8"], "modes": ["BW", "RGB", "RGBA"]},
     {"id": "JPEG2000", "label": "JPEG 2000", "ext": ".jp2", "media": "IMAGE",
      "depths": ["8", "12", "16"], "modes": ["BW", "RGB", "RGBA"],
-     "quality_kind": "quality", "quality_label": "Calidad %"},
+     "quality_kind": "quality", "quality_label": "Quality %"},
     {"id": "AVIF", "label": "AVIF", "ext": ".avif", "media": "IMAGE",
      "depths": ["8", "10", "12"], "modes": ["RGB", "RGBA"],
-     "quality_kind": "quality", "quality_label": "Calidad %"},
+     "quality_kind": "quality", "quality_label": "Quality %"},
     {"id": "DPX", "label": "DPX", "ext": ".dpx", "media": "IMAGE",
      "depths": ["8", "10", "12", "16"], "modes": ["BW", "RGB", "RGBA"]},
     {"id": "CINEON", "label": "Cineon", "ext": ".cin", "media": "IMAGE",
@@ -60,8 +60,8 @@ FORMATS: list[dict] = [
      "depths": [], "modes": ["BW", "RGB"]},
     {"id": "AVI_JPEG", "label": "AVI JPEG", "ext": ".avi", "media": "VIDEO", "movie": True,
      "depths": [], "modes": ["BW", "RGB"],
-     "quality_kind": "quality", "quality_label": "Calidad %"},
-    {"id": "AVI_RAW", "label": "AVI sin comprimir", "ext": ".avi", "media": "VIDEO",
+     "quality_kind": "quality", "quality_label": "Quality %"},
+    {"id": "AVI_RAW", "label": "Uncompressed AVI", "ext": ".avi", "media": "VIDEO",
      "movie": True, "depths": [], "modes": ["BW", "RGB"]},
 ]
 
@@ -94,33 +94,33 @@ FFMPEG_CODECS: list[dict] = [
     {"id": "MPEG2", "label": "MPEG-2"},
     {"id": "MPEG1", "label": "MPEG-1"},
     {"id": "DNXHD", "label": "DNxHD"},
-    {"id": "FFV1", "label": "FFV1 (sin pérdida)"},
-    {"id": "HUFFYUV", "label": "HuffYUV (sin pérdida)"},
-    {"id": "QTRLE", "label": "QuickTime RLE (con alfa)"},
-    {"id": "PNG", "label": "PNG (con alfa)"},
+    {"id": "FFV1", "label": "FFV1 (lossless)"},
+    {"id": "HUFFYUV", "label": "HuffYUV (lossless)"},
+    {"id": "QTRLE", "label": "QuickTime RLE (alpha)"},
+    {"id": "PNG", "label": "PNG (alpha)"},
     {"id": "DV", "label": "DV"},
-    {"id": "NONE", "label": "Sin video"},
+    {"id": "NONE", "label": "No video"},
 ]
 FFMPEG_CODEC_IDS = {c["id"] for c in FFMPEG_CODECS}
 
 EXR_CODECS: list[dict] = [
-    {"id": "NONE", "label": "Sin comprimir"},
-    {"id": "ZIP", "label": "ZIP (bloques)"},
-    {"id": "ZIPS", "label": "ZIPS (por línea)"},
+    {"id": "NONE", "label": "Uncompressed"},
+    {"id": "ZIP", "label": "ZIP (blocks)"},
+    {"id": "ZIPS", "label": "ZIPS (per line)"},
     {"id": "PIZ", "label": "PIZ"},
     {"id": "RLE", "label": "RLE"},
-    {"id": "PXR24", "label": "Pxr24 (con pérdida)"},
-    {"id": "B44", "label": "B44 (con pérdida)"},
-    {"id": "B44A", "label": "B44A (con pérdida)"},
-    {"id": "DWAA", "label": "DWAA (con pérdida)"},
-    {"id": "DWAB", "label": "DWAB (con pérdida)"},
+    {"id": "PXR24", "label": "Pxr24 (lossy)"},
+    {"id": "B44", "label": "B44 (lossy)"},
+    {"id": "B44A", "label": "B44A (lossy)"},
+    {"id": "DWAA", "label": "DWAA (lossy)"},
+    {"id": "DWAB", "label": "DWAB (lossy)"},
 ]
 EXR_CODEC_IDS = {c["id"] for c in EXR_CODECS}
 
 COLOR_MODES: list[dict] = [
-    {"id": "BW", "label": "BW (gris)"},
+    {"id": "BW", "label": "BW (grayscale)"},
     {"id": "RGB", "label": "RGB"},
-    {"id": "RGBA", "label": "RGBA (con alfa)"},
+    {"id": "RGBA", "label": "RGBA (with alpha)"},
 ]
 
 # Claves de override que pertenecen al formato de salida.
@@ -251,7 +251,7 @@ def summary(ov: dict | None) -> str:
                           str(ov["ffmpeg_codec"])))
     if ov.get("quality") is not None:
         kind = (spec(fmt) or {}).get("quality_kind")
-        parts.append(("compresión " if kind == "compression" else "calidad ")
+        parts.append(("compression " if kind == "compression" else "quality ")
                      + str(ov["quality"]) + "%")
     return " · ".join(parts)
 

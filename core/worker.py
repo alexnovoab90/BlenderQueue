@@ -37,7 +37,7 @@ class RenderWorker:
         status = job.get("status")
         if status == "queued":
             self.store.update_job(job_id, status="canceled", finished_at=time.time(),
-                                  error="Cancelado antes de iniciar")
+                                  error="Canceled before starting")
         elif status == "running":
             # Solo se marca para cancelar lo que está corriendo: hacerlo con un
             # trabajo ya terminado dejaba la marca pegada y el siguiente
@@ -107,25 +107,25 @@ class RenderWorker:
         self.current_tail.clear()
         started = time.time()
         self.store.update_job(jid, status="running", started_at=started, error=None,
-                              progress={"percent": 0.0, "frame": None, "message": "iniciando Blender…"})
+                              progress={"percent": 0.0, "frame": None, "message": "starting Blender…"})
         self.on_update()
         settings = self.store.settings()
         try:
             frec = self.store.get_file(job.get("file_id") or "")
             if not frec or not os.path.exists(job["file_path"]):
-                raise RuntimeError("El archivo .blend ya no existe en disco.")
+                raise RuntimeError("The .blend file no longer exists on disk.")
             scene_report = None
             for s in (frec.get("report") or {}).get("scenes", []):
                 if s.get("name") == job["scene"]:
                     scene_report = s
                     break
             if scene_report is None and (frec.get("report") or {}).get("scenes"):
-                raise RuntimeError("La escena ya no existe en el .blend. Re-inspecciona el archivo.")
+                raise RuntimeError("That scene no longer exists in the .blend. Re-inspect the file.")
 
             blender = (settings.get("blender_path") or "").strip() or None
             blender = blender or config.find_blender()
             if not blender or not os.path.exists(blender):
-                raise RuntimeError("No se encontró blender.exe. Configura la ruta en Ajustes.")
+                raise RuntimeError("blender.exe not found. Set the path in Settings.")
 
             fr = job.get("frames") or {}
             fstart = int(fr["start"] if fr.get("start") is not None
@@ -133,7 +133,7 @@ class RenderWorker:
             fend = int(fr["end"] if fr.get("end") is not None
                        else (scene_report or {}).get("frame_end") or fstart)
             if fend < fstart:
-                raise RuntimeError(f"Rango de frames inválido: {fstart}-{fend}")
+                raise RuntimeError(f"Invalid frame range: {fstart}-{fend}")
             total = max(1, fend - fstart + 1)
 
             renderer.ensure_output_dir(job, scene_report)
@@ -184,8 +184,8 @@ class RenderWorker:
                 tail = self._error_tail(log_path)
                 self.store.update_job(jid, status="error", finished_at=time.time(),
                                       duration_s=duration,
-                                      error=f"Blender terminó con código {rc}. {tail}")
-                self._notify(settings, "Render con error", self._label(job))
+                                      error=f"Blender exited with code {rc}. {tail}")
+                self._notify(settings, "Render failed", self._label(job))
             else:
                 if not outputs:
                     outputs = self._scan_outputs(job, scene_report, started)
@@ -200,7 +200,7 @@ class RenderWorker:
                                   in renderer.VIDEO_EXTS and os.path.exists(p)), None)
                     if blocked and not movie:
                         preview["note"] = blocked
-                        log_fn("preview omitido: " + blocked)
+                        log_fn("preview skipped: " + blocked)
                     elif movie:
                         video = renderer.remux_preview(movie, dest, log=log_fn)
                     elif len(outputs) > 1:
@@ -215,12 +215,12 @@ class RenderWorker:
                 self.store.update_job(jid, status="done", finished_at=time.time(),
                                       duration_s=duration, outputs=outputs, preview=preview,
                                       progress={"percent": 1.0, "frame": fend,
-                                                "message": "completado"})
-                self._notify(settings, "Render terminado",
+                                                "message": "completed"})
+                self._notify(settings, "Render finished",
                              self._label(job) + f" · {nframes} frame(s)")
         except Exception as exc:
             self.store.update_job(jid, status="error", finished_at=time.time(), error=str(exc))
-            self._notify(settings, "Render con error", self._label(job) + " · " + str(exc))
+            self._notify(settings, "Render failed", self._label(job) + " · " + str(exc))
         finally:
             self.current_job_id = None
             self.on_update()
@@ -242,7 +242,7 @@ class RenderWorker:
         eta = None
         if 0.02 < pct < 1.0:
             eta = elapsed / pct - elapsed
-        msg = f"frame {parser.frame} de {fend}" if parser.frame is not None else "preparando…"
+        msg = f"frame {parser.frame} of {fend}" if parser.frame is not None else "preparing…"
         self.store.update_job(jid, progress={
             "percent": round(pct, 4),
             "frame": parser.frame,
@@ -267,7 +267,7 @@ class RenderWorker:
         try:
             data = log_path.read_text(encoding="utf-8", errors="replace")
         except Exception:
-            return "Revisa el log del trabajo."
+            return "Check the job log."
         lines = [l for l in data.splitlines() if l.strip() and not renderer.is_noise(l)]
         # Si reventó un script de Python, lo útil es la excepción: el final del
         # log solo trae el banner de Blender y "Blender quit".
@@ -275,10 +275,10 @@ class RenderWorker:
             if lines[i].startswith("Traceback (most recent call last)"):
                 for line in lines[i + 1:]:
                     if line[:1] not in (" ", "\t"):
-                        return ("Error en el script: " + line.strip())[:limit]
+                        return ("Script error: " + line.strip())[:limit]
                 break
         tail = " | ".join(lines[-3:])[-limit:]
-        return tail or "Revisa el log del trabajo."
+        return tail or "Check the job log."
 
     @staticmethod
     def _scan_outputs(job: dict, scene_report: dict | None, started: float) -> list:
