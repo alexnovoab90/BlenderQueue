@@ -2,8 +2,8 @@
 
 **A local render queue for Blender.** Drop in your `.blend` files, BlendQueue inspects every
 scene headlessly (frame range, engine, samples, camera, output format and path), and you choose
-what renders. A sequential worker runs the jobs with Blender in background mode, streams live
-progress to your browser, builds an MP4 preview with ffmpeg and fires a Windows notification
+what renders. A sequential worker runs the jobs with Blender in background mode, shows live
+progress in your browser, builds an MP4 preview with ffmpeg and fires a Windows notification
 when each job finishes.
 
 No cloud, no accounts, no telemetry: a FastAPI server bound to `127.0.0.1` and a plain
@@ -48,13 +48,13 @@ if available, otherwise `pip`), installs the dependencies and opens
 
 Other port:
 
-```bash
+```bat
 .venv\Scripts\python.exe server.py --port 8888 --no-browser
 ```
 
 ## Adding files
 
-- **Pick a path on this machine** — registers the `.blend` *in place*. Recommended: relative
+- **Pick a path on this computer…** — registers the `.blend` *in place*. Recommended: relative
   texture paths keep working. You can register a whole folder and every `.blend` inside is added.
 - **Drag and drop** — copies the file into `data/uploads/`. Careful with projects that use
   relative textures: the copy breaks them.
@@ -67,10 +67,10 @@ Every scene shows the format stored in the `.blend` (PNG 8, OpenEXR multilayer 3
 You can override it **per job**, without ever modifying the `.blend`:
 
 - **Before queueing** — under *Overrides…* on each scene.
-- **Once queued** — the *Formato* button on any queued job, or **Formato de salida…** in the
-  queue header to apply one format to the whole queue at once. Handy when you queue files from
+- **Once queued** — the *Format* button on any queued job, or **Output format…** in the queue
+  header to apply one format to the whole queue at once. Handy when you queue files from
   different projects and one of them was saved with a different format: the queue header warns
-  you (`formatos mezclados: …`) and one click unifies everything.
+  you (`mixed formats: …`) and one click unifies everything.
 
 Available options follow what your Blender build reports: file format, color depth, color mode,
 quality/compression, EXR codec, and FFmpeg container plus video codec. Switching to a movie
@@ -114,8 +114,11 @@ nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
 ## How it renders
 
 ```
-blender.exe -b "file.blend" -S "Scene" [--python-expr overrides] -o "output####" -s START -e END -a
+blender.exe -b "file.blend" -S "Scene" [--python-exit-code 1] [--python-expr overrides]
+            [--python data/scripts/job_<id>.py] -o "output####" -s START -e END -a
 ```
+
+The bracketed parts only appear when that job needs them.
 
 - Without an output override, the folder saved in the `.blend` is used as-is.
 - With an override, files are written as `<blend>_<scene>_####.<ext>` in the folder you picked.
@@ -123,6 +126,8 @@ blender.exe -b "file.blend" -S "Scene" [--python-expr overrides] -o "output####"
 - Overrides are applied by a generated Python snippet that runs inside Blender. Every assignment
   is guarded, so an unsupported value logs a line instead of killing the render (that also
   absorbs the `BLENDER_EEVEE` / `BLENDER_EEVEE_NEXT` rename across versions).
+- A per-job script is passed as `--python` *after* the expression, together with
+  `--python-exit-code 1` so that a script raising an exception fails the job.
 - Cancelling kills the Blender process (`taskkill`); retry re-queues; ↑/↓ reorder the queue.
 - One render at a time — Blender already saturates the GPU/CPU.
 
@@ -136,10 +141,12 @@ core/inspector.py               inspection lane: runs Blender headless per .blen
 core/worker.py                  sequential render worker: spawn, progress, previews, notify
 core/renderer.py                command building, override codegen, progress parsing, ffmpeg
 core/formats.py                 output format catalog and override validation
+core/notifier.py                Windows toast notifications
 blender_side/inspect_blend.py   runs INSIDE Blender, reports scenes and capabilities as JSON
-static/i18n.js                  interface languages (English in the code + a Spanish map)
 static/                         web interface (no build step)
+static/i18n.js                  interface languages (English in the code + a Spanish map)
 tests/                          smoke tests and .blend generator
+run.bat                         launcher: creates the venv if missing and serves the app
 data/                           state, per-job logs and scripts, uploads, previews (git-ignored)
 ```
 
@@ -151,13 +158,13 @@ why BlendQueue works with whatever Blender build you point it at.
 The smoke tests drive the real HTTP API against a running server and render actual frames.
 Generate the fixtures once:
 
-```bash
+```bat
 blender.exe -b --factory-startup --python tests/make_tests.py -- "%CD%/data/tests"
 ```
 
 Then, with BlendQueue running:
 
-```bash
+```bat
 tests\run_smoke.bat quick
 ```
 

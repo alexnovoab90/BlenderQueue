@@ -48,7 +48,7 @@ servidor ya está corriendo, solo abre el navegador.
 
 Otro puerto:
 
-```bash
+```bat
 .venv\Scripts\python.exe server.py --port 8888 --no-browser
 ```
 
@@ -124,8 +124,11 @@ nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
 ## Cómo renderiza (por dentro)
 
 ```
-blender.exe -b "archivo.blend" -S "Escena" [--python-expr overrides] -o "salida####" -s INICIO -e FIN -a
+blender.exe -b "archivo.blend" -S "Escena" [--python-exit-code 1] [--python-expr overrides]
+            [--python data/scripts/job_<id>.py] -o "salida####" -s INICIO -e FIN -a
 ```
+
+Lo que va entre corchetes solo aparece cuando ese trabajo lo necesita.
 
 - **Sin override de salida** se usa tal cual la carpeta guardada en el `.blend`.
 - **Con override** se escribe `<archivo>_<escena>_####.<ext>` en la carpeta elegida.
@@ -133,6 +136,8 @@ blender.exe -b "archivo.blend" -S "Escena" [--python-expr overrides] -o "salida#
 - Los overrides se aplican con un fragmento de Python generado que corre dentro de Blender. Cada
   asignación va protegida: un valor no soportado deja una línea en el log en vez de tumbar el
   render (eso también absorbe el rename `BLENDER_EEVEE` / `BLENDER_EEVEE_NEXT` entre versiones).
+- El script de un trabajo va como `--python` *después* de la expresión, junto con
+  `--python-exit-code 1` para que una excepción en el script haga fallar el trabajo.
 - Cancelar mata el proceso de Blender (`taskkill`); reintentar vuelve a encolar; ↑/↓ reordenan.
 - Un solo render a la vez: Blender ya satura GPU/CPU.
 
@@ -146,10 +151,12 @@ core/inspector.py               carril de inspección: corre Blender headless po
 core/worker.py                  worker secuencial: proceso, progreso, previews, notificaciones
 core/renderer.py                armado del comando, código de overrides, parseo, ffmpeg
 core/formats.py                 catálogo de formatos de salida y validación de overrides
+core/notifier.py                notificaciones de Windows
 blender_side/inspect_blend.py   corre DENTRO de Blender y reporta escenas y capacidades en JSON
-static/i18n.js                  idiomas de la interfaz (inglés en el código + mapa al español)
 static/                         interfaz web (sin build)
+static/i18n.js                  idiomas de la interfaz (inglés en el código + mapa al español)
 tests/                          pruebas de humo y generador de .blend de prueba
+run.bat                         lanzador: crea el venv si falta y levanta la app
 data/                           estado, logs y scripts por trabajo, uploads, previews (fuera de git)
 ```
 
@@ -161,13 +168,13 @@ funciona con la instalación de Blender que le apuntes.
 Las pruebas de humo llaman a la API HTTP real contra un servidor corriendo y renderizan frames
 de verdad. Genera los archivos de prueba una vez:
 
-```bash
+```bat
 blender.exe -b --factory-startup --python tests/make_tests.py -- "%CD%/data/tests"
 ```
 
 Y con BlendQueue abierto:
 
-```bash
+```bat
 tests\run_smoke.bat quick
 ```
 
