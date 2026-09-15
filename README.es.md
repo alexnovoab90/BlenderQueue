@@ -11,16 +11,16 @@ HTML/CSS/JS sin paso de compilación.
 
 *[Read this in English](README.md)*
 
+![BlendQueue](docs/screenshot.png)
+
 La interfaz sale en **inglés** por defecto; en la cabecera hay un selector **EN / ES** y la
 elección se recuerda en ese navegador.
-
-![BlendQueue](docs/screenshot.png)
 
 ## Para qué sirve
 
 Renderizar varios `.blend` seguidos suele significar quedarse mirando una consola, o abrir cada
 archivo solo para ver su rango de frames y su configuración de salida. BlendQueue te lleva la
-cola: lee lo que cada escena tiene configurado de verdad, te deja sobreescribir lo que quieras
+cola: lee lo que cada escena tiene configurado de verdad, te deja sobrescribir lo que quieras
 (frames, motor, samples, GPU/CPU, resolución, **formato de salida**, carpeta destino) y ejecuta
 un trabajo a la vez para que Blender no pelee consigo mismo por la GPU.
 
@@ -73,7 +73,7 @@ La inspección corre en paralelo con los renders, así que agregar archivos nunc
 ## Cambiar el formato de salida
 
 Cada escena muestra el formato guardado en el `.blend` (PNG 8, OpenEXR multicapa 32, Video .mp4…).
-Puedes sobreescribirlo **por trabajo**, sin tocar nunca el archivo `.blend`:
+Puedes sobrescribirlo **por trabajo**, sin tocar nunca el archivo `.blend`:
 
 - **Antes de encolar** — en *Overrides…* de cada escena.
 - **Ya encolado** — botón *Formato* de cualquier trabajo en cola, o **Formato de salida…** en la
