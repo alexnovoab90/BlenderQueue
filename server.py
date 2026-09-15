@@ -51,6 +51,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="BlendQueue", lifespan=lifespan)
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+MAX_SCRIPT = 200_000   # tope del código de un script (caracteres)
 
 
 @app.middleware("http")
@@ -102,6 +103,7 @@ def api_state():
         "inspector": inspector.status(),
         "files": snap["files"],
         "jobs": snap["jobs"],
+        "scripts": snap.get("scripts") or [],
         "log_tail": worker.tail(),
         "ffmpeg": bool(config.ffmpeg_path()),
         # La UI descarga el catálogo de formatos aparte y solo lo vuelve a pedir
@@ -115,6 +117,51 @@ def api_state():
 def api_formats():
     """Formatos de salida que ofrece la UI, según lo que soporta este Blender."""
     return formats.catalog(store.caps())
+
+
+# ---------------------------------------------------------------- biblioteca de scripts
+class ScriptBody(BaseModel):
+    name: str | None = None
+    code: str | None = None
+
+
+def _script_fields(body: ScriptBody, partial: bool) -> dict:
+    fields = {}
+    if body.name is not None or not partial:
+        fields["name"] = (body.name or "").strip()[:120] or "Sin nombre"
+    if body.code is not None or not partial:
+        code = body.code or ""
+        if len(code) > MAX_SCRIPT:
+            raise HTTPException(400, f"El script supera {MAX_SCRIPT} caracteres")
+        fields["code"] = code
+    return fields
+
+
+@app.get("/api/scripts")
+def api_scripts():
+    return {"scripts": store.scripts()}
+
+
+@app.post("/api/scripts")
+def api_script_add(body: ScriptBody):
+    f = _script_fields(body, partial=False)
+    return {"script": store.add_script(f["name"], f["code"])}
+
+
+@app.patch("/api/scripts/{sid}")
+def api_script_update(sid: str, body: ScriptBody):
+    if not store.get_script(sid):
+        raise HTTPException(404, "Script no encontrado")
+    rec = store.update_script(sid, **_script_fields(body, partial=True))
+    return {"script": rec}
+
+
+@app.delete("/api/scripts/{sid}")
+def api_script_delete(sid: str):
+    """Borra el script de la biblioteca; los trabajos que ya lo llevan conservan su copia."""
+    if not store.delete_script(sid):
+        raise HTTPException(404, "Script no encontrado")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- archivos
@@ -220,6 +267,25 @@ def _clean_overrides(raw: dict | None) -> dict:
     out_dir = str(ov.get("output_dir") or "").strip().strip('"')
     if out_dir:
         out["output_dir"] = out_dir
+
+    # Script de Python. Al elegirlo de la biblioteca se guarda una COPIA del
+    # código en el trabajo: editar la biblioteca después no cambia lo que ya
+    # está en cola. Si la petición ya trae el código, se respeta tal cual.
+    sid = str(ov.get("script_id") or "").strip()
+    code = ov.get("script")
+    if code is None and sid:
+        rec = store.get_script(sid)
+        if not rec:
+            raise HTTPException(404, "El script ya no está en la biblioteca")
+        out["script_id"] = sid
+        out["script_name"] = rec.get("name") or "sin nombre"
+        out["script"] = rec.get("code") or ""
+    elif code:
+        out["script"] = str(code)[:MAX_SCRIPT]
+        out["script_name"] = str(ov.get("script_name") or "script")[:120]
+        if sid:
+            out["script_id"] = sid
+
     for key in formats.FORMAT_KEYS:
         if ov.get(key) not in (None, ""):
             out[key] = ov[key]
@@ -328,6 +394,37 @@ def api_jobs_format(body: FormatBody):
         store.update_job(job["id"], overrides=ov)
         changed.append(job["id"])
     return {"changed": changed, "format": patch}
+
+
+class JobScriptBody(BaseModel):
+    job_ids: list[str] | None = None   # None = todos los trabajos en cola
+    script_id: str | None = None       # "" o None = quitar el script
+
+
+@app.post("/api/jobs/script")
+def api_jobs_script(body: JobScriptBody):
+    """Pone (o quita) un script a varios trabajos en cola de una vez."""
+    sid = (body.script_id or "").strip()
+    patch = {}
+    if sid:
+        rec = store.get_script(sid)
+        if not rec:
+            raise HTTPException(404, "El script ya no está en la biblioteca")
+        patch = {"script_id": sid, "script_name": rec.get("name") or "sin nombre",
+                 "script": rec.get("code") or ""}
+    wanted = set(body.job_ids) if body.job_ids else None
+    changed = []
+    for job in store.jobs():
+        if job.get("status") != "queued":
+            continue
+        if wanted is not None and job.get("id") not in wanted:
+            continue
+        ov = {k: v for k, v in (job.get("overrides") or {}).items()
+              if k not in ("script", "script_name", "script_id")}
+        ov.update(patch)
+        store.update_job(job["id"], overrides=ov)
+        changed.append(job["id"])
+    return {"changed": changed, "script": patch.get("script_name")}
 
 
 class MoveBody(BaseModel):

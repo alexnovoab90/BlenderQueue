@@ -75,6 +75,39 @@ format makes BlendQueue write a single file instead of a numbered sequence, and 
 preview adapts (linear EXR is tone-mapped by ffmpeg; multilayer EXR has no preview because
 ffmpeg cannot decode it).
 
+## Python scripts per job
+
+Anything the built-in overrides don't cover, a script can: delete duplicate materials, swap the
+world for an HDRI, build a compositing setup, disable a collection.
+
+Keep a named library (**Scripts** in the header) and apply a script the same way you apply a
+format — on a scene before queueing, on a queued job, or to the whole queue at once. It runs
+inside Blender right before the render, *after* the app's own overrides, so it can change
+anything, including what BlendQueue just set.
+
+Your code receives `bpy`, `sc` (this job's scene, resolved by name) and `blend_path`, and runs on
+Blender's in-memory copy: **the .blend is never modified**. If it raises, the job fails with the
+exception on its error line and the full traceback in its log — no half-configured 500-frame
+render. Exactly what ran is kept at `data/scripts/job_<id>.py`.
+
+Applying a script copies it into the job, so editing the library later never changes what an
+already-queued job will run.
+
+```python
+# swap the world for an HDRI
+img = bpy.data.images.load(r"D:\hdri\sunrise_4k.exr", check_existing=True)
+world = sc.world or bpy.data.worlds.new("HDRI")
+sc.world = world
+world.use_nodes = True
+nt = world.node_tree
+nt.nodes.clear()
+env = nt.nodes.new("ShaderNodeTexEnvironment"); env.image = img
+bg = nt.nodes.new("ShaderNodeBackground")
+out = nt.nodes.new("ShaderNodeOutputWorld")
+nt.links.new(env.outputs["Color"], bg.inputs["Color"])
+nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
+```
+
 ## How it renders
 
 ```
@@ -103,7 +136,7 @@ core/formats.py                 output format catalog and override validation
 blender_side/inspect_blend.py   runs INSIDE Blender, reports scenes and capabilities as JSON
 static/                         web interface (no build step)
 tests/                          smoke tests and .blend generator
-data/                           state, per-job logs, uploads, previews (git-ignored)
+data/                           state, per-job logs and scripts, uploads, previews (git-ignored)
 ```
 
 The server never imports `bpy`: everything Blender-specific happens in a subprocess, which is
@@ -125,7 +158,8 @@ tests\run_smoke.bat quick
 ```
 
 Modes: `quick` (EEVEE sequence), `multi` (scene selection via `-S`), `cycles` (GPU),
-`format` (format overrides: EXR, video, editing a queued job, bulk apply), and
+`format` (format overrides: EXR, video, editing a queued job, bulk apply),
+`script` (per-job Python: library, real effect on the render, frozen copy, failure), and
 `real "G:/path/file.blend" [render]` for one of your own files.
 
 ## Troubleshooting

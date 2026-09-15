@@ -137,7 +137,8 @@ class RenderWorker:
             total = max(1, fend - fstart + 1)
 
             renderer.ensure_output_dir(job, scene_report)
-            cmd = renderer.build_cmd(blender, job, scene_report)
+            script_path = renderer.write_job_script(job, config.SCRIPTS_DIR / f"job_{jid}.py")
+            cmd = renderer.build_cmd(blender, job, scene_report, script_path)
             log_path = config.LOGS_DIR / f"job_{jid}.log"
             parser = renderer.ProgressParser(fstart, fend)
             outputs = []
@@ -268,6 +269,14 @@ class RenderWorker:
         except Exception:
             return "Revisa el log del trabajo."
         lines = [l for l in data.splitlines() if l.strip() and not renderer.is_noise(l)]
+        # Si reventó un script de Python, lo útil es la excepción: el final del
+        # log solo trae el banner de Blender y "Blender quit".
+        for i in range(len(lines) - 1, -1, -1):
+            if lines[i].startswith("Traceback (most recent call last)"):
+                for line in lines[i + 1:]:
+                    if line[:1] not in (" ", "\t"):
+                        return ("Error en el script: " + line.strip())[:limit]
+                break
         tail = " | ".join(lines[-3:])[-limit:]
         return tail or "Revisa el log del trabajo."
 

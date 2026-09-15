@@ -205,6 +205,17 @@ function readFormat(root) {
   return out;
 }
 
+/* ============================ scripts de Python ============================ */
+function scriptsList() { return (state && state.scripts) || []; }
+
+function scriptById(id) { return scriptsList().find(s => s.id === id) || null; }
+
+function scriptsSig() { return scriptsList().map(s => s.id + ":" + s.name).join(","); }
+
+function scriptOptions(selected) {
+  return optionList(scriptsList().map(s => ({ id: s.id, label: s.name })), selected, "(ninguno)");
+}
+
 /* ============================ tick principal ============================ */
 async function tick() {
   try {
@@ -246,7 +257,7 @@ function renderFiles(st) {
   const sig = JSON.stringify(st.files.map(f => ({
     i: f.id, s: f.status, e: f.inspect_error, t: f.inspected_at,
     r: f.report ? f.report.inspect_seconds : null
-  }))) + "|" + (insp || "");
+  }))) + "|" + (insp || "") + "|" + scriptsSig();
   if (sig === filesSig) return;
   filesSig = sig;
   const el = $("#filesList");
@@ -317,6 +328,9 @@ function sceneRow(f, s) {
         (fmtTxt ? '<span class="tag fmt' + (ovFmt ? ' out-own' : '') + '" title="formato de salida"' +
           ' data-fmt="' + esc(s.file_format || '') + '" data-cont="' + esc(s.ffmpeg_container || '') +
           '" data-depth="' + esc(s.color_depth || '') + '">' + esc(fmtTxt) + '</span>' : '') +
+        '<span class="tag script' + (d.script_id && scriptById(d.script_id) ? '' : ' hidden') +
+          '" title="script de Python de este trabajo">' +
+          esc(d.script_id && scriptById(d.script_id) ? scriptById(d.script_id).name : '') + '</span>' +
         (s.camera ? '<span class="tag">cam ' + esc(s.camera) + '</span>' : '') +
         '<span class="tag out' + (d.out ? ' out-own' : '') + '" data-raw="' + esc(s.filepath_raw || '') + '" data-abs="' + esc(s.filepath_abs || '') + '" title="' + esc(d.out || s.filepath_abs || '') + '">→ ' + esc(d.out || out) + '</span>' +
       '</span>' +
@@ -342,6 +356,7 @@ function sceneRow(f, s) {
         '<option value="CPU"' + (d.device === "CPU" ? " selected" : "") + '>CPU</option>' +
       '</select></label>' +
       '<label>Resolución % <input class="input num ov-res" type="number" min="1" max="400" style="width:64px" value="' + esc(d.res ?? "") + '"></label>' +
+      '<label>Script <select class="input ov-script">' + scriptOptions(d.script_id) + '</select></label>' +
       '<label class="grow">Salida <input class="input ov-out" placeholder="(la del archivo)" value="' + esc(d.out ?? "") + '"></label>' +
       '<button class="btn sm ghost" data-act="pick-out">Elegir carpeta…</button>' +
       '<div class="fmt-fields ov-format">' + formatFields(d.fmt || {}) + '</div>' +
@@ -353,6 +368,7 @@ function readOverrideRow(row) {
   const g = sel => { const el = row.querySelector(sel); return el ? el.value : ""; };
   return { start: g(".ov-start"), end: g(".ov-end"), engine: g(".ov-engine"),
            samples: g(".ov-samples"), device: g(".ov-device"), res: g(".ov-res"), out: g(".ov-out"),
+           script_id: g(".ov-script"),
            fmt: readFormat(row.querySelector(".ov-format")) };
 }
 
@@ -392,6 +408,15 @@ function updateSceneFmtTag(row) {
   }
 }
 
+function updateSceneScriptTag(row) {
+  const tag = row.querySelector(".tag.script");
+  const sel = row.querySelector(".ov-script");
+  if (!tag || !sel) return;
+  const sc = scriptById(sel.value);
+  tag.textContent = sc ? sc.name : "";
+  tag.classList.toggle("hidden", !sc);
+}
+
 /* ============================ cola ============================ */
 /** Formato con el que se va a escribir el trabajo: el override, o el del .blend. */
 function jobFormatId(j) {
@@ -423,6 +448,7 @@ function renderQueue(st) {
     warn.classList.add("hidden");
   }
   $("#btnQueueFormat").disabled = queued.length === 0;
+  $("#btnQueueScript").disabled = queued.length === 0;
 
   const el = $("#queueList");
   const sig = jobs.map(j => j.id + ":" + j.status + ":" + JSON.stringify(j.overrides || {}) +
@@ -506,6 +532,7 @@ function jobCard(j) {
   const fr = j.frames || {};
   const ovs = summarizeOverrides(j.overrides);
   const fmtTxt = jobFormatText(j);
+  const scriptTxt = (j.overrides || {}).script_name;
   const acts = [];
   if (j.status === "queued") {
     acts.push('<button class="btn sm ghost" data-act="move-up" data-id="' + j.id + '" title="Subir">↑</button>');
@@ -524,6 +551,8 @@ function jobCard(j) {
   if (j.status === "queued") {
     acts.push('<button class="btn sm ghost" data-act="job-format" data-id="' + j.id +
       '" title="Cambiar el formato de salida de este trabajo">🎞 Formato</button>');
+    acts.push('<button class="btn sm ghost" data-act="job-script" data-id="' + j.id +
+      '" title="Poner o quitar un script de Python a este trabajo">⚙ Script</button>');
   }
   acts.push('<button class="btn sm" data-act="details" data-id="' + j.id + '">Detalles</button>');
 
@@ -531,6 +560,8 @@ function jobCard(j) {
     '<div class="job-head">' +
       '<span class="chip ' + j.status + '">' + (chipLabels[j.status] || j.status) + '</span>' +
       '<span class="job-title">' + esc(j.file_name) + ' <span class="muted">·</span> ' + esc(j.scene) + '</span>' +
+      (scriptTxt ? '<span class="chip script" title="script de Python que corre antes de renderizar">⚙ ' +
+        esc(scriptTxt) + '</span>' : '') +
       (fmtTxt ? '<span class="chip fmt' + ((j.overrides || {}).format ? ' own' : '') +
         '" title="' + ((j.overrides || {}).format ? 'formato forzado para este trabajo' : 'formato guardado en el .blend') +
         '">' + esc(fmtTxt) + '</span>' : '') +
@@ -658,6 +689,131 @@ $("#fmtApply").addEventListener("click", async () => {
 
 $("#btnQueueFormat").addEventListener("click", () => openFormatModal("queue"));
 
+/* ============================ biblioteca de scripts ============================ */
+let scriptTarget = null;   // null = solo biblioteca | {mode:"job", id} | {mode:"queue"}
+let scriptEditing = "";    // id del script abierto en el editor ("" = nuevo)
+
+function openScriptModal(target, preselect) {
+  scriptTarget = target || null;
+  const jobs = ((state && state.jobs) || []);
+  const queued = jobs.filter(j => j.status === "queued");
+  const job = target && target.mode === "job" ? jobs.find(j => j.id === target.id) : null;
+
+  $("#scriptTitle").textContent = target ? "Elegir script" : "Scripts de Python";
+  $("#scriptScope").textContent = !target ? "Se guardan en la app y siguen aquí la próxima vez."
+    : target.mode === "job"
+      ? (job ? job.file_name + " · " + job.scene + " — ahora: " +
+               ((job.overrides || {}).script_name || "sin script") : "")
+      : "Se aplica a los " + queued.length + " trabajo(s) en cola.";
+  $("#scriptApply").classList.toggle("hidden", !target);
+  $("#scriptApply").textContent = target && target.mode === "queue" ? "Aplicar a la cola" : "Aplicar al trabajo";
+
+  const want = preselect !== undefined ? preselect
+    : (job ? (job.overrides || {}).script_id || "" : (scriptsList()[0] || {}).id || "");
+  fillScriptPick(want);
+  $("#scriptModal").classList.remove("hidden");
+}
+
+function fillScriptPick(selected) {
+  $("#scriptPick").innerHTML = scriptOptions(selected);
+  loadScriptIntoEditor(selected || "");
+}
+
+function loadScriptIntoEditor(id) {
+  scriptEditing = id || "";
+  const sc = scriptById(scriptEditing);
+  $("#scriptName").value = sc ? sc.name : "";
+  $("#scriptCode").value = sc ? sc.code : "";
+  $("#scriptDel").disabled = !sc;
+  $("#scriptDup").disabled = !sc;
+}
+
+function editorIsDirty() {
+  const sc = scriptById(scriptEditing);
+  if (!sc) return !!($("#scriptName").value.trim() || $("#scriptCode").value.trim());
+  return sc.name !== $("#scriptName").value || sc.code !== $("#scriptCode").value;
+}
+
+/** Guarda el script abierto (alta o edición) y devuelve su id. */
+async function saveScript() {
+  const body = { name: $("#scriptName").value.trim() || "Sin nombre", code: $("#scriptCode").value };
+  const r = scriptEditing
+    ? await api("/api/scripts/" + scriptEditing, { method: "PATCH", body: JSON.stringify(body) })
+    : await api("/api/scripts", { method: "POST", body: JSON.stringify(body) });
+  const id = r.script.id;
+  await tick();
+  fillScriptPick(id);
+  return id;
+}
+
+$("#scriptPick").addEventListener("change", e => {
+  if (editorIsDirty() && !confirm("Hay cambios sin guardar en el script. ¿Descartarlos?")) {
+    e.target.value = scriptEditing;
+    return;
+  }
+  loadScriptIntoEditor(e.target.value);
+});
+
+$("#scriptNew").addEventListener("click", () => {
+  $("#scriptPick").value = "";
+  loadScriptIntoEditor("");
+  $("#scriptName").focus();
+});
+
+$("#scriptDup").addEventListener("click", () => {
+  const sc = scriptById(scriptEditing);
+  if (!sc) return;
+  scriptEditing = "";
+  $("#scriptPick").value = "";
+  $("#scriptName").value = sc.name + " (copia)";
+  $("#scriptCode").value = sc.code;
+});
+
+$("#scriptSave").addEventListener("click", async () => {
+  try { await saveScript(); toast("Script guardado", "ok"); }
+  catch (err) { toast(String(err.message || err), "error"); }
+});
+
+$("#scriptDel").addEventListener("click", async () => {
+  const sc = scriptById(scriptEditing);
+  if (!sc || !confirm("¿Borrar «" + sc.name + "» de la biblioteca?\nLos trabajos que ya lo llevan conservan su copia.")) return;
+  try {
+    await api("/api/scripts/" + sc.id, { method: "DELETE" });
+    await tick();
+    fillScriptPick((scriptsList()[0] || {}).id || "");
+    toast("Script borrado", "ok");
+  } catch (err) { toast(String(err.message || err), "error"); }
+});
+
+$("#scriptApply").addEventListener("click", async () => {
+  try {
+    let id = $("#scriptPick").value;
+    if (id && editorIsDirty()) id = await saveScript();   // aplica lo que ves, no lo viejo
+    if (scriptTarget && scriptTarget.mode === "job") {
+      const job = ((state && state.jobs) || []).find(j => j.id === scriptTarget.id);
+      if (!job) throw new Error("El trabajo ya no está en la cola");
+      const ov = {};
+      for (const [k, v] of Object.entries(job.overrides || {})) {
+        if (!["script", "script_name", "script_id"].includes(k)) ov[k] = v;
+      }
+      if (id) ov.script_id = id;
+      await api("/api/jobs/" + scriptTarget.id, { method: "PATCH", body: JSON.stringify({ overrides: ov }) });
+      toast(id ? "Script aplicado al trabajo" : "Script quitado del trabajo", "ok");
+    } else {
+      const r = await api("/api/jobs/script", { method: "POST", body: JSON.stringify({ script_id: id }) });
+      const n = (r.changed || []).length;
+      toast(n ? ((id ? "Script aplicado a " : "Script quitado de ") + n + " trabajo(s)") : "No había trabajos en cola",
+            n ? "ok" : "warn");
+    }
+    closeModal("scriptModal");
+    queueSig = null;
+    tick();
+  } catch (err) { toast(String(err.message || err), "error"); }
+});
+
+$("#btnScripts").addEventListener("click", () => openScriptModal(null));
+$("#btnQueueScript").addEventListener("click", () => openScriptModal({ mode: "queue" }));
+
 /* ============================ acciones (delegación) ============================ */
 document.addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-act]");
@@ -691,6 +847,10 @@ document.addEventListener("click", async (e) => {
     else if (act === "delete") await api("/api/jobs/" + btn.dataset.id, { method: "DELETE" });
     else if (act === "open-folder") await api("/api/jobs/" + btn.dataset.id + "/open", { method: "POST" });
     else if (act === "view-log") await viewLog(btn.dataset.id);
+    else if (act === "job-script") {
+      const job = ((state && state.jobs) || []).find(j => j.id === btn.dataset.id);
+      if (job) openScriptModal({ mode: "job", id: job.id });
+    }
     else if (act === "job-format") {
       const job = ((state && state.jobs) || []).find(j => j.id === btn.dataset.id);
       if (job) openFormatModal("job", job);
@@ -722,6 +882,7 @@ document.addEventListener("input", (e) => {
     snapshotRow(row);
     if (e.target.matches(".ov-out")) updateSceneOutTag(row);
     if (e.target.closest(".ov-format")) updateSceneFmtTag(row);
+    if (e.target.matches(".ov-script")) updateSceneScriptTag(row);
   }
 });
 
@@ -739,6 +900,7 @@ async function enqueueScene(row) {
   if (d.device) ov.device = d.device;
   if (d.res !== "") ov.resolution_percentage = Number(d.res);
   if (d.out) ov.output_dir = d.out;
+  if (d.script_id) ov.script_id = d.script_id;
   Object.assign(ov, d.fmt || {});
   if (Object.keys(ov).length) body.overrides = ov;
   await api("/api/jobs", { method: "POST", body: JSON.stringify(body) });

@@ -188,11 +188,48 @@ def override_expr(job: dict) -> str | None:
     return "\n".join(lines) if len(lines) > 2 else None
 
 
-def build_cmd(blender: str, job: dict, scene_report: dict | None) -> list:
+SCRIPT_HEADER = """# Generado por BlendQueue: este archivo es lo que se ejecuta dentro de Blender.
+# Tu codigo empieza mas abajo y recibe bpy, sc (la escena de este trabajo) y blend_path.
+import bpy
+
+sc = bpy.data.scenes.get({scene!r}) or bpy.context.scene
+blend_path = bpy.data.filepath
+print("[blendqueue] script:", {name!r})
+
+# --- tu script ---
+"""
+
+
+def write_job_script(job: dict, dest) -> str | None:
+    """Escribe el script del trabajo a un .py que Blender ejecuta con --python.
+
+    Va en un archivo aparte y no dentro de --python-expr para que el codigo del
+    usuario no dependa de como se escapa la linea de comandos (acentos, comillas,
+    saltos) y para que el traceback apunte a lineas reales.
+    """
+    code = (job.get("overrides") or {}).get("script") or ""
+    if not code.strip():
+        return None
+    header = SCRIPT_HEADER.format(scene=job.get("scene") or "",
+                                  name=(job.get("overrides") or {}).get("script_name") or "sin nombre")
+    dest = str(dest)
+    with open(dest, "w", encoding="utf-8") as fh:
+        fh.write(header + code.rstrip() + "\nprint('[blendqueue] script ok')\n")
+    return dest
+
+
+def build_cmd(blender: str, job: dict, scene_report: dict | None,
+              script_path: str | None = None) -> list:
     args = [blender, "-b", job["file_path"], "-S", job["scene"]]
+    if script_path:
+        # Sin esto Blender imprime el traceback y renderiza igual: el trabajo debe fallar.
+        args += ["--python-exit-code", "1"]
     expr = override_expr(job)
     if expr:
         args += ["--python-expr", expr]
+    if script_path:
+        # Despues de los overrides: el script del usuario puede pisar cualquiera.
+        args += ["--python", script_path]
     pat = output_pattern(job, scene_report)
     if pat:
         args += ["-o", pat]

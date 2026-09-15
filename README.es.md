@@ -84,6 +84,40 @@ un formato de película se escribe un único archivo en vez de una secuencia num
 se adapta (el EXR lineal lo convierte ffmpeg; el EXR multicapa no tiene preview porque ffmpeg no
 sabe leerlo).
 
+## Scripts de Python por trabajo
+
+Lo que no cubren los overrides, lo cubre un script: borrar materiales duplicados, cambiar el
+mundo por un HDRI, armar un nodo de composición, apagar una colección.
+
+Tienes una biblioteca con nombres (botón **Scripts** en la cabecera) y el script se aplica igual
+que el formato: en una escena antes de encolar, en un trabajo ya en cola, o a toda la cola de una
+vez. Corre dentro de Blender justo antes del render, *después* de los overrides de la app, así
+que puede cambiar cualquier cosa, incluido lo que acaba de poner BlendQueue.
+
+Tu código recibe `bpy`, `sc` (la escena de ese trabajo, resuelta por nombre) y `blend_path`, y
+trabaja sobre la copia en memoria de Blender: **el .blend nunca se modifica**. Si lanza una
+excepción el trabajo queda en error con la excepción en su línea de error y el traceback completo
+en el log — nada de descubrir a las 3 horas que los 500 frames salieron mal. Lo que se ejecutó
+exactamente queda guardado en `data/scripts/job_<id>.py`.
+
+Al aplicar un script se guarda una copia en el trabajo, así que editar la biblioteca después no
+cambia lo que van a ejecutar los trabajos que ya estaban en cola.
+
+```python
+# cambiar el mundo por un HDRI
+img = bpy.data.images.load(r"D:\hdri\sunrise_4k.exr", check_existing=True)
+world = sc.world or bpy.data.worlds.new("HDRI")
+sc.world = world
+world.use_nodes = True
+nt = world.node_tree
+nt.nodes.clear()
+env = nt.nodes.new("ShaderNodeTexEnvironment"); env.image = img
+bg = nt.nodes.new("ShaderNodeBackground")
+out = nt.nodes.new("ShaderNodeOutputWorld")
+nt.links.new(env.outputs["Color"], bg.inputs["Color"])
+nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
+```
+
 ## Cómo renderiza (por dentro)
 
 ```
@@ -112,7 +146,7 @@ core/formats.py                 catálogo de formatos de salida y validación de
 blender_side/inspect_blend.py   corre DENTRO de Blender y reporta escenas y capacidades en JSON
 static/                         interfaz web (sin build)
 tests/                          pruebas de humo y generador de .blend de prueba
-data/                           estado, logs por trabajo, uploads, previews (fuera de git)
+data/                           estado, logs y scripts por trabajo, uploads, previews (fuera de git)
 ```
 
 El servidor nunca importa `bpy`: todo lo de Blender ocurre en un subproceso, por eso BlendQueue
@@ -134,7 +168,8 @@ tests\run_smoke.bat quick
 ```
 
 Modos: `quick` (secuencia EEVEE), `multi` (selección de escena con `-S`), `cycles` (GPU),
-`format` (overrides de formato: EXR, video, editar un trabajo en cola, aplicar a toda la cola) y
+`format` (overrides de formato: EXR, video, editar un trabajo en cola, aplicar a toda la cola),
+`script` (scripts por trabajo: biblioteca, efecto real en el render, copia congelada, fallo) y
 `real "G:/ruta/archivo.blend" [render]` para uno de tus propios archivos.
 
 ## Problemas comunes

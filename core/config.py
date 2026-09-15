@@ -17,6 +17,7 @@ OUTPUTS_DIR = DATA_DIR / "outputs"
 LOGS_DIR = DATA_DIR / "logs"
 PREVIEWS_DIR = DATA_DIR / "previews"
 INSPECT_DIR = DATA_DIR / "inspect"
+SCRIPTS_DIR = DATA_DIR / "scripts"   # copia del script que corre en cada trabajo
 TESTS_DIR = DATA_DIR / "tests"
 STATIC_DIR = APP_DIR / "static"
 BLENDER_SIDE_DIR = APP_DIR / "blender_side"
@@ -41,7 +42,8 @@ CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
 
 def ensure_dirs() -> None:
-    for d in (DATA_DIR, UPLOADS_DIR, OUTPUTS_DIR, LOGS_DIR, PREVIEWS_DIR, INSPECT_DIR, TESTS_DIR):
+    for d in (DATA_DIR, UPLOADS_DIR, OUTPUTS_DIR, LOGS_DIR, PREVIEWS_DIR, INSPECT_DIR,
+              SCRIPTS_DIR, TESTS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 

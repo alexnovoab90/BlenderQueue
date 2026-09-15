@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BlendQueue — cola local de renders Blender</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=4">
+  <link rel="stylesheet" href="/static/styles.css?v=5">
 </head>
 <body>
   <header class="topbar">
@@ -19,6 +19,7 @@
     <div class="topbar-right">
       <span id="blenderBadge" class="badge">Blender: …</span>
       <button id="btnPause" class="btn">Pausar cola</button>
+      <button id="btnScripts" class="btn ghost" title="Biblioteca de scripts de Python">Scripts</button>
       <button id="btnSettings" class="btn ghost">Ajustes</button>
       <button id="btnShutdown" class="btn danger" title="Detener BlendQueue y cerrar la ventana del servidor">⏻ Cerrar</button>
     </div>
@@ -57,6 +58,7 @@
           <span class="muted" id="queueSummary"></span>
           <span id="queueFormatWarn" class="chip warn hidden"></span>
           <button class="btn sm ghost" id="btnQueueFormat" title="Cambiar el formato de salida de los trabajos en cola">Formato de salida…</button>
+          <button class="btn sm ghost" id="btnQueueScript" title="Aplicar un script de Python a los trabajos en cola">Script…</button>
         </div>
       </div>
       <div id="queueList" class="queue"></div>
@@ -136,6 +138,44 @@
     </div>
   </div>
 
+  <!-- Modal: biblioteca de scripts de Python (y elegir cuál aplicar) -->
+  <div class="modal hidden" id="scriptModal">
+    <div class="modal-box wide">
+      <div class="modal-head">
+        <h3 id="scriptTitle">Scripts de Python</h3>
+        <button class="x" data-close="scriptModal">✕</button>
+      </div>
+      <div class="settings">
+        <div class="row">
+          <select class="input grow" id="scriptPick"></select>
+          <button class="btn sm" id="scriptNew">Nuevo</button>
+          <button class="btn sm" id="scriptDup">Duplicar</button>
+          <button class="btn sm ghost danger" id="scriptDel">Borrar</button>
+        </div>
+        <label class="field">
+          <span>Nombre</span>
+          <input class="input" id="scriptName" placeholder="Limpiar materiales duplicados">
+        </label>
+        <label class="field">
+          <span>Código Python — corre dentro de Blender, justo antes de renderizar</span>
+          <textarea class="input code" id="scriptCode" rows="12" spellcheck="false"
+            placeholder="# Recibes bpy, sc (la escena de este trabajo) y blend_path&#10;for mat in bpy.data.materials:&#10;    ..."></textarea>
+        </label>
+        <div class="muted small">Se ejecuta después de los overrides, así que puede cambiar
+          cualquier cosa (incluido el formato). Si lanza una excepción el trabajo queda en
+          <strong>error</strong> con el traceback en su log, sin renderizar. El .blend nunca se
+          modifica: los cambios viven solo en la sesión de Blender que hace ese render.</div>
+      </div>
+      <div class="modal-foot">
+        <span class="muted small" id="scriptScope"></span>
+        <div class="foot-actions">
+          <button class="btn" id="scriptSave">Guardar</button>
+          <button class="btn primary hidden" id="scriptApply">Aplicar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: log -->
   <div class="modal hidden" id="logModal">
     <div class="modal-box wide">
@@ -160,6 +200,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=4"></script>
+  <script src="/static/app.js?v=5"></script>
 </body>
 </html>

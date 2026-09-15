@@ -15,7 +15,7 @@ Fixtures are generated once by Blender into the git-ignored `data/tests/`:
 
 ```bash
 blender.exe -b --factory-startup --python tests/make_tests.py -- "%CD%/data/tests"
-tests\run_smoke.bat quick            # also: multi | cycles | format
+tests\run_smoke.bat quick            # also: multi | cycles | format | script
 tests\run_smoke.bat real "G:/path/file.blend" [render]
 .venv\Scripts\python.exe tests/api_smoke.py format          # single mode, server must be up
 ```
@@ -66,6 +66,20 @@ The catalog is filtered by `capabilities` from the last successful inspection (`
 so the UI never offers a format that the detected Blender lacks. The effective format of a job
 (`overrides.format` or the scene's own) decides the `-o` pattern (`_####` for sequences, bare stem
 for movies), the extension used to locate outputs, and whether a preview is possible.
+
+### Per-job Python scripts
+
+A named library lives in the store (`scripts` in `data/state.json`). Applying one to a job copies
+its code into `job.overrides.script` (+ `script_name`, `script_id`): editing the library later
+never changes a queued job. `renderer.write_job_script()` dumps that copy to
+`data/scripts/job_<id>.py` with a header binding `bpy`, `sc` and `blend_path`, and the worker
+passes it as `--python` *after* the generated `--python-expr`, so user code wins over app
+overrides. A separate file (not the expr) keeps the user's accents, quotes and newlines out of the
+command line and makes tracebacks point at real lines.
+
+`--python-exit-code 1` is added only when a script is present: a raising script must fail the job
+instead of rendering with a half-applied setup. The app's own overrides are all `try/except`, so
+they never trigger it. `_error_tail()` surfaces the exception line rather than the tail of the log.
 
 ### Render command
 

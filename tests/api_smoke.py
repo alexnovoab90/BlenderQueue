@@ -4,6 +4,7 @@
     tests\run_smoke.bat multi        comprueba la seleccion de escena (-S)
     tests\run_smoke.bat cycles       render Cycles en GPU
     tests\run_smoke.bat format       overrides de formato: EXR, video, cola mezclada
+    tests\run_smoke.bat script       scripts de Python por trabajo
     tests\run_smoke.bat real "G:/ruta/archivo.blend" [render]
 
 Los .blend de prueba los genera tests/make_tests.py con Blender.
@@ -220,6 +221,81 @@ def mode_format():
     return ok
 
 
+def png_size(path):
+    """Ancho/alto leidos de la cabecera IHDR del PNG."""
+    with open(path, "rb") as fh:
+        d = fh.read(33)
+    assert d[1:4] == b"PNG", "no es PNG"
+    return int.from_bytes(d[16:20], "big"), int.from_bytes(d[20:24], "big")
+
+
+def mode_script():
+    """Scripts de Python por trabajo: biblioteca, efecto real, copia congelada y fallo."""
+    ok = True
+
+    def check(name, cond, detail=""):
+        nonlocal ok
+        print(("    OK   " if cond else "    FALLA") + " " + name +
+              ((" -> " + str(detail)) if detail else ""))
+        ok = ok and bool(cond)
+
+    info = add_and_inspect(TESTS + "/quick.blend")
+    if not info:
+        return False
+    scene = info["report"]["scenes"][0]
+    out_dir = TESTS + "/renders/script"
+
+    print("== biblioteca de scripts")
+    st, r = req_status("POST", "/api/scripts",
+                       {"name": "Media resolucion", "code": "sc.render.resolution_percentage = 50"})
+    check("crear script", st == 200 and r.get("script", {}).get("id"), (st, r))
+    sid = (r.get("script") or {}).get("id")
+    if not sid:
+        return False
+    check("aparece en el estado",
+          any(x["id"] == sid for x in req("GET", "/api/state").get("scripts", [])))
+
+    print("== el script cambia el render de verdad")
+    j = enqueue(info["id"], scene, out_dir, extra={"script_id": sid}, frames={"start": 1, "end": 1})
+    outs = (j or {}).get("outputs") or []
+    check("render OK", bool(j and j["status"] == "done"), (j or {}).get("error"))
+    check("el trabajo guarda el nombre del script",
+          (j or {}).get("overrides", {}).get("script_name") == "Media resolucion",
+          (j or {}).get("overrides"))
+    if outs:
+        size = png_size(outs[0])
+        check("resolucion a la mitad (160x90)", size == (160, 90), size)
+    else:
+        check("hay salida", False)
+
+    print("== copia congelada: editar la biblioteca no toca lo ya encolado")
+    req("POST", "/api/queue/pause", {"paused": True})
+    jid = req("POST", "/api/jobs", {"file_id": info["id"], "scene": scene["name"],
+                                    "frames": {"start": 1, "end": 1},
+                                    "overrides": {"output_dir": out_dir, "script_id": sid}})["job"]["id"]
+    req("PATCH", "/api/scripts/" + sid, {"code": "sc.render.resolution_percentage = 25"})
+    ov = find(req("GET", "/api/state"), "jobs", jid)["overrides"]
+    check("el encolado conserva su copia", "50" in (ov.get("script") or ""), ov.get("script"))
+    req("DELETE", "/api/jobs/" + jid)
+
+    print("== un script roto deja el trabajo en error")
+    sid2 = req("POST", "/api/scripts", {"name": "Roto", "code": "raise RuntimeError('boom de prueba')"})["script"]["id"]
+    req("POST", "/api/queue/pause", {"paused": False})
+    j = enqueue(info["id"], scene, out_dir, extra={"script_id": sid2}, frames={"start": 1, "end": 1})
+    check("el trabajo falla", bool(j and j["status"] == "error"), (j or {}).get("status"))
+    log = req("GET", "/api/jobs/" + j["id"] + "/log?tail=400")["log"] if j else ""
+    check("el traceback queda en el log", "boom de prueba" in log, log[-160:])
+    check("el error del trabajo dice la excepcion, no 'Blender quit'",
+          "boom de prueba" in str((j or {}).get("error")), (j or {}).get("error"))
+    check("no escribio salidas", not (j or {}).get("outputs"), (j or {}).get("outputs"))
+
+    for x in (sid, sid2):
+        req_status("DELETE", "/api/scripts/" + x)
+    check("borrar de la biblioteca",
+          not any(y["id"] in (sid, sid2) for y in req("GET", "/api/state").get("scripts", [])))
+    return ok
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -237,6 +313,8 @@ def main():
         ok = mode_cycles()
     elif mode == "format":
         ok = mode_format()
+    elif mode == "script":
+        ok = mode_script()
     elif mode == "real":
         if len(sys.argv) < 3:
             print("falta la ruta del .blend")

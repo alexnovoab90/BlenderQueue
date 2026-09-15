@@ -30,7 +30,8 @@ class Store:
     def __init__(self, path: str | None = None):
         self._path = str(path or config.STATE_FILE)
         self._lock = threading.RLock()
-        self._data = {"settings": dict(DEFAULT_SETTINGS), "files": [], "jobs": [], "caps": {}}
+        self._data = {"settings": dict(DEFAULT_SETTINGS), "files": [], "jobs": [],
+                      "scripts": [], "caps": {}}
         self.load()
 
     # ---------------- persistencia ----------------
@@ -46,6 +47,8 @@ class Store:
                         self._data["files"] = data["files"]
                     if isinstance(data.get("jobs"), list):
                         self._data["jobs"] = data["jobs"]
+                    if isinstance(data.get("scripts"), list):
+                        self._data["scripts"] = data["scripts"]
                     if isinstance(data.get("caps"), dict):
                         self._data["caps"] = data["caps"]
             except Exception:
@@ -81,6 +84,46 @@ class Store:
     def settings(self) -> dict:
         with self._lock:
             return dict(self._data["settings"])
+
+    # ---------------- biblioteca de scripts ----------------
+    def scripts(self) -> list:
+        with self._lock:
+            return copy.deepcopy(self._data.get("scripts") or [])
+
+    def get_script(self, sid: str):
+        with self._lock:
+            for s in self._data.get("scripts") or []:
+                if s.get("id") == sid:
+                    return copy.deepcopy(s)
+        return None
+
+    def add_script(self, name: str, code: str) -> dict:
+        with self._lock:
+            rec = {"id": new_id("s"), "name": name, "code": code,
+                   "created_at": now(), "updated_at": now()}
+            self._data.setdefault("scripts", []).append(rec)
+            self.save()
+            return copy.deepcopy(rec)
+
+    def update_script(self, sid: str, **fields):
+        with self._lock:
+            for s in self._data.get("scripts") or []:
+                if s.get("id") == sid:
+                    s.update(fields)
+                    s["updated_at"] = now()
+                    self.save()
+                    return copy.deepcopy(s)
+        return None
+
+    def delete_script(self, sid: str) -> bool:
+        with self._lock:
+            scripts = self._data.get("scripts") or []
+            rest = [s for s in scripts if s.get("id") != sid]
+            if len(rest) != len(scripts):
+                self._data["scripts"] = rest
+                self.save()
+                return True
+        return False
 
     def caps(self) -> dict:
         """Formatos/enums que soporta el Blender detectado (última inspección OK)."""
