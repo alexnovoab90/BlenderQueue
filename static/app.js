@@ -257,7 +257,7 @@ function renderFiles(st) {
   const insp = st.inspector && st.inspector.current_file_id;
   $("#filesCount").textContent = st.files.length ? tf("{n} file(s)", { n: st.files.length }) : "";
   const sig = JSON.stringify(st.files.map(f => ({
-    i: f.id, s: f.status, e: f.inspect_error, t: f.inspected_at,
+    i: f.id, s: f.status, e: f.inspect_error, t: f.inspected_at, o: f.origin, p: f.path,
     r: f.report ? f.report.inspect_seconds : null
   }))) + "|" + (insp || "") + "|" + scriptsSig();
   if (sig === filesSig) return;
@@ -274,6 +274,32 @@ function renderFiles(st) {
   });
 }
 
+function baseName(p) {
+  return String(p || "").split(/[\\/]/).filter(Boolean).pop() || String(p || "");
+}
+
+/** Textures and linked files the .blend points at but that are not on disk.
+    Blender renders anyway (pink textures, missing linked collections), so this
+    has to be impossible to miss -- above all for an uploaded copy, whose paths
+    relative to the original folder all break. */
+function missingBox(f) {
+  const ext = ((f.report || {}).external_files || []).filter(x => x.missing && !x.noise);
+  if (!ext.length) return "";
+  const rel = ext.filter(x => String(x.path || "").startsWith("//"));
+  const libs = ext.filter(x => /\.blend$/i.test(String(x.path || "")));
+  let head = f.origin === "upload" && rel.length
+    ? tf("This copy cannot find {n} file(s) referenced relative to the original folder: textures and linked .blend files would render missing.", { n: rel.length })
+    : tf("{n} external file(s) missing: they would render missing.", { n: ext.length });
+  if (libs.length) {
+    head += " " + tf("Includes {n} linked .blend: {names}.",
+                     { n: libs.length, names: libs.slice(0, 3).map(x => baseName(x.path)).join(", ") });
+  }
+  const shown = ext.slice(0, 40).map(x => '<li>' + esc(x.path) + '</li>').join("") +
+    (ext.length > 40 ? '<li>' + esc(tf("… and {n} more", { n: ext.length - 40 })) + '</li>' : '');
+  return '<div class="file-warn">⚠ ' + esc(head) +
+    '<details><summary>' + esc(t("Show the list")) + '</summary><ul>' + shown + '</ul></details></div>';
+}
+
 function fileCard(f, inspecting) {
   let chip = '<span class="chip done">' + esc(t("ready")) + '</span>';
   if (f.status === "inspecting") chip = '<span class="chip running">' + esc(t("inspecting…")) + '</span>';
@@ -286,21 +312,27 @@ function fileCard(f, inspecting) {
   if (r.saved_with) meta.push(tf("saved with Blender {v}", { v: r.saved_with }));
   if (r.inspect_seconds) meta.push(tf("inspection {s} s", { s: r.inspect_seconds }));
   if (r.counts) meta.push(tf("{o} objects · {s} scene(s)", { o: r.counts.objects, s: r.counts.scenes }));
-  if (r.missing_external_count) meta.push(tf("⚠ {n} external file(s) missing", { n: r.missing_external_count }));
 
   const scenes = (r.scenes || []).map(s => sceneRow(f, s)).join("");
+  const copy = f.origin === "upload";
+  if (copy) chip += ' <span class="chip warn" title="' +
+    esc(t("A copy in data/uploads, not the original file")) + '">' + esc(t("uploaded copy")) + '</span>';
 
   return '<div class="file-card ' + f.status + '" data-id="' + f.id + '">' +
     '<div class="file-head">' +
       '<div class="file-title"><span class="fname">' + esc(f.name) + '</span>' + chip + '</div>' +
       '<div class="file-actions">' +
+        (copy ? '<button class="btn sm" data-act="locate-original" data-id="' + f.id + '">' +
+          esc(t("Locate the original…")) + '</button>' : '') +
         '<button class="btn sm ghost" data-act="inspect" data-id="' + f.id + '">' + esc(t("Re-inspect")) + '</button>' +
         '<button class="btn sm ghost" data-act="open-file" data-path="' + esc(f.path) + '">' + esc(t("Open folder")) + '</button>' +
-        '<button class="btn sm ghost danger" data-act="remove-file" data-id="' + f.id + '">' + esc(t("Remove")) + '</button>' +
+        '<button class="btn sm ghost danger" data-act="remove-file" data-id="' + f.id + '"' +
+          (copy ? ' data-copy="1"' : '') + '>' + esc(t("Remove")) + '</button>' +
       '</div>' +
     '</div>' +
     '<div class="file-path muted" title="' + esc(f.path) + '">' + esc(f.path) + '</div>' +
     '<div class="file-meta muted">' + meta.join(" · ") + '</div>' +
+    (f.status === "ready" ? missingBox(f) : '') +
     (f.inspect_error ? '<div class="err">' + esc(f.inspect_error) + '</div>' : '') +
     (f.status === "ready" ?
       '<div class="scenes">' + scenes +
@@ -315,7 +347,10 @@ function sceneRow(f, s) {
   const frames = (s.frame_start != null)
     ? tf("{a}–{b} · {n} frames", { a: s.frame_start, b: s.frame_end, n: s.frame_count }) : "";
   const eng = engineLabel(s.engine) + (s.samples ? " · " + s.samples + " spp" : "") + (s.device ? " " + s.device : "");
-  const res = s.resolution_x ? (s.resolution_x + "×" + s.resolution_y) : "";
+  const nat = s.resolution_native || [];
+  const size = sizeTagInfo(nat, s.resolution_x, s.resolution_y, d.resx, d.resy,
+                           isFfmpeg((d.fmt && d.fmt.format) || s.file_format));
+  const typed = outputSize(nat, s.resolution_x, s.resolution_y, d.resx, d.resy, false);
   const out = s.filepath_raw || t("(the .blend default)");
   const ovFmt = (d.fmt && d.fmt.format) ? d.fmt : null;
   const fmtTxt = ovFmt
@@ -328,7 +363,10 @@ function sceneRow(f, s) {
       '<span class="tags">' +
         '<span class="tag">' + frames + '</span>' +
         '<span class="tag">' + esc(eng) + '</span>' +
-        '<span class="tag">' + esc(res) + '</span>' +
+        '<span class="tag res' + (size.own ? ' out-own' : '') + '" data-w="' + esc(s.resolution_x || '') +
+          '" data-h="' + esc(s.resolution_y || '') + '" data-nw="' + esc(nat[0] || '') +
+          '" data-nh="' + esc(nat[1] || '') + '" data-fmt="' + esc(s.file_format || '') +
+          '" title="' + esc(size.title) + '">' + esc(size.text) + '</span>' +
         (fmtTxt ? '<span class="tag fmt' + (ovFmt ? ' out-own' : '') + '" title="' + esc(t("output format")) + '"' +
           ' data-fmt="' + esc(s.file_format || '') + '" data-cont="' + esc(s.ffmpeg_container || '') +
           '" data-depth="' + esc(s.color_depth || '') + '">' + esc(fmtTxt) + '</span>' : '') +
@@ -362,7 +400,11 @@ function sceneRow(f, s) {
         '<option value="GPU"' + (d.device === "GPU" ? " selected" : "") + '>GPU</option>' +
         '<option value="CPU"' + (d.device === "CPU" ? " selected" : "") + '>CPU</option>' +
       '</select></label>' +
-      '<label>' + esc(t("Resolution %")) + ' <input class="input num ov-res" type="number" min="1" max="400" style="width:64px" value="' + esc(d.res ?? "") + '"></label>' +
+      '<label title="' + esc(t("Width × height of the render, in pixels. Leave one empty to keep the .blend's aspect ratio.")) + '">' +
+        esc(t("Size")) + ' <input class="input num ov-resx" type="number" min="4" max="65536" step="1" style="width:76px"' +
+        ' placeholder="' + esc(typed.w || '') + '" value="' + esc(d.resx ?? "") + '"> × ' +
+        '<input class="input num ov-resy" type="number" min="4" max="65536" step="1" style="width:76px"' +
+        ' placeholder="' + esc(typed.h || '') + '" value="' + esc(d.resy ?? "") + '"> px</label>' +
       '<label>' + esc(t("Script")) + ' <select class="input ov-script">' + scriptOptions(d.script_id) + '</select></label>' +
       '<label>' + esc(t("Existing frames")) + ' <select class="input ov-overwrite">' +
         '<option value="">' + esc(t("(from the file)")) + '</option>' +
@@ -379,9 +421,53 @@ function sceneRow(f, s) {
 function readOverrideRow(row) {
   const g = sel => { const el = row.querySelector(sel); return el ? el.value : ""; };
   return { start: g(".ov-start"), end: g(".ov-end"), engine: g(".ov-engine"),
-           samples: g(".ov-samples"), device: g(".ov-device"), res: g(".ov-res"), out: g(".ov-out"),
-           script_id: g(".ov-script"), overwrite: g(".ov-overwrite"),
-           fmt: readFormat(row.querySelector(".ov-format")) };
+           samples: g(".ov-samples"), device: g(".ov-device"), resx: g(".ov-resx"),
+           resy: g(".ov-resy"), out: g(".ov-out"), script_id: g(".ov-script"),
+           overwrite: g(".ov-overwrite"), fmt: readFormat(row.querySelector(".ov-format")) };
+}
+
+function isFfmpeg(formatId) {
+  const s = fmtSpec(formatId);
+  return !!(s && s.ffmpeg);
+}
+
+/** The size the render gets, in pixels: what was typed, else the .blend's own.
+    With one side only the other keeps the .blend's aspect ratio. Video is
+    rounded down to even, which is what the worker does inside Blender. */
+function outputSize(nat, w0, h0, resx, resy, video) {
+  let w = Number(w0) || 0, h = Number(h0) || 0;
+  const x = Number(resx) || 0, y = Number(resy) || 0;
+  const nw = Number(nat[0]) || w, nh = Number(nat[1]) || h;
+  if (x && y) { w = x; h = y; }
+  else if (x && nw) { h = Math.max(4, Math.round(nh * x / nw)); w = x; }
+  else if (y && nh) { w = Math.max(4, Math.round(nw * y / nh)); h = y; }
+  const ew = video ? w - w % 2 : w, eh = video ? h - h % 2 : h;
+  return { w: ew, h: eh, rounded: ew !== w || eh !== h, typed: w + "×" + h, own: !!(x || y) };
+}
+
+function sizeTagInfo(nat, w0, h0, resx, resy, video) {
+  if (!w0 && !resx && !resy) return { text: "", title: "", own: false };
+  const o = outputSize(nat, w0, h0, resx, resy, video);
+  let title = o.own ? t("size forced for this job") : t("size saved in the .blend");
+  if (o.rounded) title = tf("Video needs an even size: {a} is rendered as {b}",
+                            { a: o.typed, b: o.w + "×" + o.h });
+  return { text: o.w + "×" + o.h + (o.rounded ? " *" : ""), title, own: o.own };
+}
+
+function updateSceneResTag(row) {
+  const tag = row.querySelector(".tag.res");
+  if (!tag) return;
+  const d = readOverrideRow(row);
+  const nat = [tag.dataset.nw, tag.dataset.nh];
+  const info = sizeTagInfo(nat, tag.dataset.w, tag.dataset.h,
+                           d.resx, d.resy, isFfmpeg((d.fmt && d.fmt.format) || tag.dataset.fmt));
+  tag.textContent = info.text;
+  tag.title = info.title;
+  tag.classList.toggle("out-own", info.own);
+  // An empty side shows what it will be, not what the .blend has.
+  const o = outputSize(nat, tag.dataset.w, tag.dataset.h, d.resx, d.resy, false);
+  row.querySelector(".ov-resx").placeholder = o.w;
+  row.querySelector(".ov-resy").placeholder = o.h;
 }
 
 function snapshotRow(row) {
@@ -486,6 +572,12 @@ function renderQueue(st) {
     if (bar) bar.style.width = pct + "%";
     const info = card.querySelector(".job-progress");
     if (info) info.textContent = progressText(j, pct);
+    const ri = card.querySelector(".job-rinfo");
+    if (ri) {
+      const txt = renderInfoText(j.render_info);
+      ri.textContent = txt;
+      ri.classList.toggle("hidden", !txt);
+    }
     const tail = card.querySelector(".job-tail");
     if (tail && j.status === "running" && j.id === st.worker.current_job_id) {
       const lines = st.log_tail || [];
@@ -498,6 +590,16 @@ function renderQueue(st) {
     if (prev && prev !== j.status && prev === "running" && j.status === "done") beep();
     prevStatuses[j.id] = j.status;
   }
+}
+
+/** What Blender really rendered with, as the job printed it: an override that
+    did not apply shows up here instead of going unnoticed. */
+function renderInfoText(ri) {
+  if (!ri) return "";
+  const parts = [engineLabel(ri.engine)];
+  if (ri.samples && ri.samples !== "-") parts.push(ri.samples + " spp");
+  parts.push(ri.width + "×" + ri.height + " px");
+  return tf("In Blender: {what}", { what: parts.join(" · ") });
 }
 
 function progressText(j, pct) {
@@ -528,6 +630,9 @@ function summarizeOverrides(ov) {
   if (ov.engine) parts.push(engineLabel(ov.engine));
   if (ov.samples) parts.push(ov.samples + " spp");
   if (ov.device) parts.push(ov.device);
+  if (ov.resolution_x || ov.resolution_y) {
+    parts.push((ov.resolution_x || "…") + "×" + (ov.resolution_y || "…") + " px");
+  }
   if (ov.resolution_percentage) parts.push(ov.resolution_percentage + "%");
   if (ov.color_mode) parts.push(ov.color_mode);
   if (ov.exr_codec) parts.push(ov.exr_codec);
@@ -593,6 +698,7 @@ function jobCard(j) {
     '</div>' +
     '<div class="bar ' + j.status + '"><div></div></div>' +
     '<div class="job-progress muted"></div>' +
+    '<div class="job-rinfo muted small hidden"></div>' +
     (j.status === "running" ? '<div class="job-tail"></div>' : '') +
     '<div class="job-details hidden" data-details="' + j.id + '"></div>' +
     '</div>';
@@ -859,10 +965,12 @@ document.addEventListener("click", async (e) => {
     }
     else if (act === "inspect") { await api("/api/files/" + btn.dataset.id + "/inspect", { method: "POST" }); toast(t("Re-inspecting…")); }
     else if (act === "remove-file") {
-      if (confirm(t("Remove this file from the list? (it is not deleted from disk)"))) {
-        await api("/api/files/" + btn.dataset.id, { method: "DELETE" });
-      }
+      const q = btn.dataset.copy
+        ? t("Remove this file from the list? Its copy in data/uploads is deleted; your original is not touched.")
+        : t("Remove this file from the list? (it is not deleted from disk)");
+      if (confirm(q)) await api("/api/files/" + btn.dataset.id, { method: "DELETE" });
     }
+    else if (act === "locate-original") await locateOriginal(btn.dataset.id);
     else if (act === "open-file") await api("/api/open", { method: "POST", body: JSON.stringify({ path: btn.dataset.path }) });
     else if (act === "move-up") await api("/api/jobs/" + btn.dataset.id + "/move", { method: "POST", body: JSON.stringify({ direction: -1 }) });
     else if (act === "move-down") await api("/api/jobs/" + btn.dataset.id + "/move", { method: "POST", body: JSON.stringify({ direction: 1 }) });
@@ -907,6 +1015,7 @@ document.addEventListener("input", (e) => {
     if (e.target.matches(".ov-out")) updateSceneOutTag(row);
     if (e.target.closest(".ov-format")) updateSceneFmtTag(row);
     if (e.target.matches(".ov-script")) updateSceneScriptTag(row);
+    if (e.target.matches(".ov-resx, .ov-resy") || e.target.closest(".ov-format")) updateSceneResTag(row);
   }
 });
 
@@ -918,8 +1027,8 @@ function askOverwrite(info, label) {
   return new Promise(resolve => {
     $("#owScope").textContent = tf("{label}: {n} file(s) already exist for frames {a}-{b}.", {
       label, n: info.existing, a: (info.frames || {}).start, b: (info.frames || {}).end });
-    $("#owFolder").textContent = info.folder + (info.examples || []).length
-      ? info.folder + "  (" + (info.examples || []).join(", ") + "…)" : info.folder;
+    $("#owFolder").textContent = (info.examples || []).length
+      ? info.folder + "  (" + info.examples.join(", ") + "…)" : info.folder;
     const modal = $("#overwriteModal");
     const done = (value) => {
       modal.classList.add("hidden");
@@ -947,7 +1056,8 @@ async function enqueueScene(row, batch = false) {
   if (d.engine) ov.engine = d.engine;
   if (d.samples !== "") ov.samples = Number(d.samples);
   if (d.device) ov.device = d.device;
-  if (d.res !== "") ov.resolution_percentage = Number(d.res);
+  if (d.resx !== "") ov.resolution_x = Number(d.resx);
+  if (d.resy !== "") ov.resolution_y = Number(d.resy);
   if (d.out) ov.output_dir = d.out;
   if (d.script_id) ov.script_id = d.script_id;
   if (d.overwrite !== "") ov.overwrite = d.overwrite === "1";
@@ -1022,16 +1132,69 @@ function setupDropzone() {
   ["dragleave", "drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("over"); }));
   dz.addEventListener("drop", e => {
     const fl = Array.from(e.dataTransfer.files || []).filter(f => f.name.toLowerCase().endsWith(".blend"));
-    if (fl.length) uploadFiles(fl);
+    if (fl.length) addDropped(fl);
     else toast(t("Only .blend files are accepted"), "warn");
   });
   $("#btnBrowseFiles").addEventListener("click", () => $("#fileInput").click());
   $("#fileInput").addEventListener("change", e => {
     const fl = Array.from(e.target.files || []).filter(f => f.name.toLowerCase().endsWith(".blend"));
-    if (fl.length) uploadFiles(fl);
+    if (fl.length) addDropped(fl);
     e.target.value = "";
   });
   $("#btnBrowse").addEventListener("click", () => openFs("add"));
+}
+
+/** A browser never says where a dropped (or picked) file lives, and rendering a
+    copy breaks every path relative to the .blend: textures, linked files,
+    caches. The originals are looked up in the folders already in use first,
+    and only what is not found gets the question. */
+async function addDropped(fl) {
+  let found = {}, start = "";
+  try {
+    const r = await api("/api/files/locate", { method: "POST", body: JSON.stringify({
+      files: fl.map(f => ({ name: f.name, size: f.size, mtime: f.lastModified / 1000 })) }) });
+    found = r.found || {};
+    start = r.start || "";
+  } catch (err) { /* nothing found: ask about all of them */ }
+  const paths = fl.map(f => found[f.name]).filter(Boolean);
+  if (paths.length) {
+    try {
+      await api("/api/files/add", { method: "POST", body: JSON.stringify({ paths }) });
+      toast(tf("Found on disk, rendered in place: {list}", { list: paths.join(", ") }), "ok", 9000);
+    } catch (err) { toast(String(err.message || err), "error"); }
+    tick();
+  }
+  const rest = fl.filter(f => !found[f.name]);
+  if (rest.length) askWhere(rest, start);
+}
+
+function askWhere(fl, start) {
+  $("#whereNames").textContent = fl.map(f => f.name + " (" + fmtBytes(f.size) + ")").join(", ");
+  $("#whereFind").onclick = () => { closeModal("whereModal"); openFs("add", null, start); };
+  $("#whereUpload").onclick = () => { closeModal("whereModal"); uploadFiles(fl); };
+  $("#whereModal").classList.remove("hidden");
+}
+
+/** Swaps an uploaded copy for its original: searched for first, then picked by hand. */
+async function locateOriginal(fid) {
+  const f = ((state && state.files) || []).find(x => x.id === fid);
+  if (!f) return;
+  const r = await api("/api/files/locate", { method: "POST",
+    body: JSON.stringify({ files: [{ name: f.name, size: f.size }] }) });
+  const p = (r.found || {})[f.name];
+  if (p && confirm(tf("Found the original:\n{p}\n\nRender that one and delete the copy?", { p }))) {
+    await relocateFile(fid, p);
+    return;
+  }
+  openFs("relocate", null, r.start || "", fid);
+}
+
+async function relocateFile(fid, path) {
+  const r = await api("/api/files/" + fid + "/relocate", { method: "POST", body: JSON.stringify({ path }) });
+  toast(r.merged ? t("The original was already in the list: the copy was removed.")
+                 : t("Now using the original; the copy was deleted. Inspecting…"), "ok", 8000);
+  filesSig = null;
+  tick();
 }
 
 function uploadFiles(fl) {
@@ -1055,21 +1218,28 @@ function uploadFiles(fl) {
 }
 
 /* ============================ file browser ============================ */
-const fs = { mode: "add", selected: new Set(), path: "", targetInput: null };
+const fs = { mode: "add", selected: new Set(), path: "", targetInput: null, fid: null };
 
-async function openFs(mode, targetInput = null, startPath = "") {
+async function openFs(mode, targetInput = null, startPath = "", fid = null) {
   fs.mode = mode;
   fs.targetInput = targetInput || null;
+  fs.fid = fid;
   if (startPath) fs.path = startPath;
   fs.selected = new Set();
-  $("#fsTitle").textContent = mode === "pick-dir" ? t("Choose output folder") : t("Select .blend files");
+  const relocate = mode === "relocate";
+  $("#fsTitle").textContent = mode === "pick-dir" ? t("Choose output folder")
+    : relocate ? t("Locate the original .blend") : t("Select .blend files");
   $("#fsHint").textContent = mode === "pick-dir"
     ? t("Browse to the folder and press “Use this folder”.")
+    : relocate ? t("Tick the original .blend: it is rendered where it is and the copy is deleted.")
     : t("Browse and tick the .blend files you want to add (they are queued once inspected).");
   $("#fsPickDir").textContent = mode === "pick-dir" ? t("Use this folder") : t("Add every .blend in this folder");
+  $("#fsPickDir").classList.toggle("hidden", relocate);
+  $("#fsAdd").textContent = relocate ? t("Use this file") : t("Add selected");
   $("#fsAdd").classList.toggle("hidden", mode === "pick-dir");
+  $("#fsMkdir").classList.toggle("hidden", mode !== "pick-dir");
   $("#fsModal").classList.remove("hidden");
-  await fsGo(mode === "pick-dir" ? (fs.path || "") : "");
+  await fsGo(startPath || (mode === "pick-dir" ? (fs.path || "") : ""));
 }
 
 async function fsGo(path) {
@@ -1078,6 +1248,7 @@ async function fsGo(path) {
   catch (err) { toast(String(err.message || err), "error"); return; }
   fs.path = data.path;
   $("#fsPath").value = data.path || "";
+  $("#fsMkdir").disabled = !data.path;   // not among the drives
   const list = $("#fsList");
   list.dataset.parent = data.parent || "";
   list.innerHTML = (data.entries || []).map(en => {
@@ -1102,11 +1273,31 @@ $("#fsList").addEventListener("change", e => {
   }
 });
 $("#fsUp").addEventListener("click", () => fsGo($("#fsList").dataset.parent || ""));
+
+/** Creates a folder where the picker is and walks into it, so “Use this folder” takes it. */
+$("#fsMkdir").addEventListener("click", async () => {
+  if (!fs.path) return;
+  const name = (prompt(t("Name of the new folder:")) || "").trim();
+  if (!name) return;
+  try {
+    const r = await api("/api/fs/mkdir", { method: "POST", body: JSON.stringify({ parent: fs.path, name }) });
+    await fsGo(r.path);
+    toast(tf("Folder created: {name}", { name }), "ok");
+  } catch (err) { toast(String(err.message || err), "error"); }
+});
 $("#fsGo").addEventListener("click", () => fsGo($("#fsPath").value.trim()));
 $("#fsPath").addEventListener("keydown", e => { if (e.key === "Enter") fsGo($("#fsPath").value.trim()); });
 
 $("#fsAdd").addEventListener("click", async () => {
   const paths = Array.from(fs.selected);
+  if (fs.mode === "relocate") {
+    if (paths.length !== 1) { toast(t("Tick exactly one .blend"), "warn"); return; }
+    try {
+      await relocateFile(fs.fid, paths[0]);
+      closeModal("fsModal");
+    } catch (err) { toast(String(err.message || err), "error"); }
+    return;
+  }
   if (!paths.length) { toast(t("Select at least one .blend"), "warn"); return; }
   try {
     await api("/api/files/add", { method: "POST", body: JSON.stringify({ paths }) });

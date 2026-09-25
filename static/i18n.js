@@ -32,13 +32,20 @@ const ES = {
   "choose files…": "elegir archivos…",
   "Pick a path on this computer…": "Seleccionar ruta del equipo…",
   "rendered in place, without copying": "se renderiza en su lugar, sin copiar",
-  "Adding by path keeps the .blend's relative textures working. Dropping a file copies it into":
-    "Por ruta se conservan las texturas relativas del .blend. Al arrastrar, el archivo se copia a",
-  ". You can also register a whole folder and every .blend inside is added.":
-    ". También puedes registrar una carpeta completa con .blend y se agregarán todos.",
+  "Dropped files are looked up on disk and rendered where they are, so their relative textures and linked files keep working. A copy into":
+    "Los archivos arrastrados se buscan en el disco y se renderizan donde están, así sus texturas relativas y archivos enlazados siguen funcionando. Solo se hace una copia en",
+  "is only made if you ask for it. You can also register a whole folder and every .blend inside is added.":
+    "si tú lo pides. También puedes registrar una carpeta completa y se agregan todos sus .blend.",
   "Only .blend files are accepted": "Solo se aceptan archivos .blend",
   "Files added; inspecting…": "Archivos agregados; inspeccionando…",
   "Network error while uploading": "Error de red al subir",
+  "Found on disk, rendered in place: {list}": "Encontrado en el disco, se renderiza donde está: {list}",
+  "Where is this file?": "¿Dónde está este archivo?",
+  "The browser does not tell BlendQueue where a dropped file lives, and it was not found in the folders you already use. A copy cannot see the textures and linked .blend files next to the original, so they would render missing.":
+    "El navegador no le dice a BlendQueue dónde está un archivo arrastrado, y no apareció en las carpetas que ya usas. Una copia no ve las texturas ni los .blend enlazados que están junto al original, así que saldrían faltantes en el render.",
+  "Upload a copy anyway": "Subir una copia igual",
+  "Only for a .blend that has everything packed inside": "Solo para un .blend que trae todo empaquetado",
+  "Find it on disk…": "Buscarlo en el disco…",
 
   // ---- files and scenes ----
   "Files": "Archivos",
@@ -60,6 +67,24 @@ const ES = {
   "Re-inspecting…": "Re-inspeccionando…",
   "Remove this file from the list? (it is not deleted from disk)":
     "¿Quitar este archivo de la lista? (no se borra del disco)",
+  "Remove this file from the list? Its copy in data/uploads is deleted; your original is not touched.":
+    "¿Quitar este archivo de la lista? Se borra su copia en data/uploads; tu original no se toca.",
+  "uploaded copy": "copia subida",
+  "A copy in data/uploads, not the original file": "Una copia en data/uploads, no el archivo original",
+  "Locate the original…": "Buscar el original…",
+  "This copy cannot find {n} file(s) referenced relative to the original folder: textures and linked .blend files would render missing.":
+    "Esta copia no encuentra {n} archivo(s) referenciados de forma relativa a la carpeta original: las texturas y los .blend enlazados saldrían faltantes en el render.",
+  "{n} external file(s) missing: they would render missing.":
+    "Faltan {n} archivo(s) externos: saldrían faltantes en el render.",
+  "Includes {n} linked .blend: {names}.": "Incluye {n} .blend enlazado(s): {names}.",
+  "Show the list": "Ver la lista",
+  "… and {n} more": "… y {n} más",
+  "Found the original:\n{p}\n\nRender that one and delete the copy?":
+    "Se encontró el original:\n{p}\n\n¿Renderizar ese y borrar la copia?",
+  "Now using the original; the copy was deleted. Inspecting…":
+    "Ahora se usa el original; la copia se borró. Inspeccionando…",
+  "The original was already in the list: the copy was removed.":
+    "El original ya estaba en la lista: se quitó la copia.",
   "output format": "formato de salida",
   "format forced for this job": "formato forzado para este trabajo",
   "format saved in the .blend": "formato guardado en el .blend",
@@ -70,7 +95,12 @@ const ES = {
   "Engine": "Motor",
   "Samples": "Samples",
   "Device": "Dispositivo",
-  "Resolution %": "Resolución %",
+  "Size": "Tamaño",
+  "Width × height of the render, in pixels. Leave one empty to keep the .blend's aspect ratio.":
+    "Ancho × alto del render, en píxeles. Si dejas uno vacío se mantiene la proporción del .blend.",
+  "size forced for this job": "tamaño forzado para este trabajo",
+  "size saved in the .blend": "tamaño guardado en el .blend",
+  "Video needs an even size: {a} is rendered as {b}": "El video necesita un tamaño par: {a} se renderiza como {b}",
   "Script": "Script",
   "Output": "Salida",
   "Format": "Formato",
@@ -133,6 +163,7 @@ const ES = {
   "Queued jobs do not all write the same format. Use “Output format…” to unify them.":
     "Los trabajos en cola no escriben todos el mismo formato. Usa «Formato de salida…» para unificarlos.",
   "Queued: ": "Encolado: ",
+  "In Blender: {what}": "En Blender: {what}",
   "The job is no longer in the queue": "El trabajo ya no está en la cola",
 
   // ---- job details ----
@@ -201,6 +232,15 @@ const ES = {
   "Add every .blend in this folder": "Agregar todos los .blend de esta carpeta",
   "Add selected": "Agregar seleccionados",
   "Select at least one .blend": "Selecciona al menos un .blend",
+  "Locate the original .blend": "Buscar el .blend original",
+  "Tick the original .blend: it is rendered where it is and the copy is deleted.":
+    "Marca el .blend original: se renderiza donde está y la copia se borra.",
+  "Use this file": "Usar este archivo",
+  "Tick exactly one .blend": "Marca un solo .blend",
+  "New folder…": "Nueva carpeta…",
+  "Create a folder here and open it": "Crear una carpeta aquí y entrar en ella",
+  "Name of the new folder:": "Nombre de la carpeta nueva:",
+  "Folder created: {name}": "Carpeta creada: {name}",
   "(empty folder)": "(carpeta vacía)",
   "Folder added; inspecting the .blend files…": "Carpeta agregada; inspeccionando los .blend…",
 
@@ -247,7 +287,6 @@ const ES = {
   "saved with Blender {v}": "guardado con Blender {v}",
   "inspection {s} s": "inspección {s} s",
   "{o} objects · {s} scene(s)": "{o} objetos · {s} escena(s)",
-  "⚠ {n} external file(s) missing": "⚠ faltan {n} archivo(s) externo(s)",
   "{a}–{b} · {n} frames": "{a}–{b} · {n} frames",
   "{q} queued · {r} rendering · {d} done": "{q} en cola · {r} renderizando · {d} listos",
   "mixed formats: {list}": "formatos mezclados: {list}",

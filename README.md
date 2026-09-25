@@ -21,7 +21,7 @@ is remembered per browser.
 Rendering several `.blend` files in a row usually means babysitting a terminal, or opening each
 file just to check its frame range and output settings. BlendQueue keeps a queue for you: it
 reads what every scene is actually configured to do, lets you override the parts you want
-(frames, engine, samples, GPU/CPU, resolution, **output format**, destination folder) and runs
+(frames, engine, samples, GPU/CPU, **size in pixels**, **output format**, destination folder) and runs
 one job at a time so Blender never fights itself for the GPU.
 
 ## Requirements
@@ -75,12 +75,32 @@ Other port:
 
 ## Adding files
 
-- **Pick a path on this computer…** — registers the `.blend` *in place*. Recommended: relative
-  texture paths keep working. You can register a whole folder and every `.blend` inside is added.
-- **Drag and drop** — copies the file into `data/uploads/`. Careful with projects that use
-  relative textures: the copy breaks them.
+- **Pick a path on this computer…** — registers the `.blend` *in place*. You can register a
+  whole folder and every `.blend` inside is added.
+- **Drag and drop** (or *choose files…*) — a browser never tells a page where a dropped file
+  lives, so BlendQueue looks for it first: same name, size and date, in the folders you already
+  work in (those of your other files and recent render folders, and the folders next to them).
+  Found, it is rendered in place. Not found, you are asked to find it on disk — or to upload a
+  copy into `data/uploads/` anyway.
+
+A copy cannot see the textures and linked `.blend` files next to the original: Blender resolves
+`//` paths against the copy's folder and renders them missing. Each file card warns about missing
+external files, and an uploaded copy gets **Locate the original…**, which swaps it for the
+original (queued jobs follow it, the copy is deleted). Removing an uploaded copy from the list
+deletes it as well; your original is never touched.
 
 Inspection runs in parallel with rendering, so adding files never stalls the queue.
+
+## Output size
+
+*Overrides…* → **Size** takes the width and height of the render in pixels — whatever you need,
+1280 × 720 or 1080 × 1350 alike. Leave one side empty to keep the `.blend`'s aspect ratio. What
+you type is the size of the file: the `.blend`'s resolution percentage is reset to 100 %.
+
+Video codecs such as H.264 need an even width and height. With an odd size Blender cannot start
+the encoder and exits as if all went well, having written nothing, so BlendQueue rounds an odd
+video size down to even (one pixel at most) and says so in the log. The scene tag always shows
+the size that will actually be rendered.
 
 ## Output format overrides
 
@@ -148,20 +168,29 @@ nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
 
 ```
 blender.exe -b "file.blend" -S "Scene" [--python-exit-code 1] [--python-expr overrides]
-            [--python data/scripts/job_<id>.py] -o "output####" -s START -e END -a
+            [--python data/scripts/job_<id>.py] --python-expr final-checks
+            -o "output####" -s START -e END -a
 ```
 
 The bracketed parts only appear when that job needs them.
 
 - Without an output override, the folder saved in the `.blend` is used as-is.
 - With an override, files are written as `<blend>_<scene>_####.<ext>` in the folder you picked.
+  The folder picker has **New folder…** to create one on the spot.
 - Engine, samples and device come from the file unless overridden per job.
 - Overrides are applied by a generated Python snippet that runs inside Blender. Every assignment
   is guarded, so an unsupported value logs a line instead of killing the render (that also
   absorbs the `BLENDER_EEVEE` / `BLENDER_EEVEE_NEXT` rename across versions).
 - A per-job script is passed as `--python` *after* the expression, together with
   `--python-exit-code 1` so that a script raising an exception fails the job.
-- Cancelling kills the Blender process (`taskkill`); retry re-queues; ↑/↓ reorder the queue.
+- A last expression runs after everything else: it rounds odd video sizes to even and prints the
+  engine, samples and size Blender is about to use. The job card shows that line (*In Blender:
+  EEVEE · 10 spp · 1280×720 px*), so an override that did not apply cannot go unnoticed.
+- Blender reports some failures and still exits with code 0 — a video encoder that cannot start,
+  for one. A job that wrote nothing ends in **error** with Blender's own message, unless the
+  frames were skipped on purpose (see [Existing frames](#existing-frames)).
+- Cancelling kills Blender together with its child processes; retry re-queues; ↑/↓ reorder the
+  queue.
 - One render at a time — Blender already saturates the GPU/CPU.
 
 ## Project layout
@@ -205,14 +234,28 @@ tests\run_smoke.bat quick
 Modes: `quick` (EEVEE sequence), `multi` (scene selection via `-S`), `cycles` (GPU),
 `format` (format overrides: EXR, video, editing a queued job, bulk apply),
 `script` (per-job Python: library, real effect on the render, frozen copy, failure),
-`overwrite` (existing frames: preflight, skipping them, forcing the overwrite), and
-`real "G:/path/file.blend" [render]` for one of your own files.
+`overwrite` (existing frames: preflight, skipping them, forcing the overwrite),
+`size` (size in pixels, odd video sizes, a render that writes nothing with exit code 0),
+`locate` (dropped files found on disk, uploaded copies swapped for their originals),
+`fs` (creating a folder from the picker), and `real "G:/path/file.blend" [render]` for one of
+your own files.
+
+To test while BlendQueue is busy rendering, start a second server on its own data folder so the
+tests never touch your queue:
+
+```bash
+BLENDQUEUE_DATA=/tmp/bq-test .venv/bin/python server.py --port 8790 --no-browser
+BLENDQUEUE_URL=http://127.0.0.1:8790 .venv/bin/python tests/api_smoke.py size
+```
 
 ## Troubleshooting
 
 - **Blender not found** → Settings → path to `blender.exe`, or set `BLENDQUEUE_BLENDER`.
-- **Pink textures / missing files** → add the `.blend` *by path* instead of dragging it, or pack
-  the textures. The inspection report counts missing external files.
+- **Pink textures / missing files** → read the warning on the file card. An uploaded copy loses
+  every path relative to the original: use **Locate the original…**. Otherwise the files are
+  missing next to the original too — fix the paths in Blender or pack them.
+- **"Blender rendered nothing: …"** → that is Blender's own error (a codec that does not accept
+  the size, no camera…). *View log* has the full output.
 - **Port busy** → the launcher detects a running instance and just opens the browser.
 - **"This system cannot open a file manager" (Linux)** → install `xdg-utils`, or use the path
   shown in the job. Same idea for notifications: they need `notify-send` (`libnotify-bin`).

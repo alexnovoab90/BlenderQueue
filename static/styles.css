@@ -422,3 +422,18 @@ textarea.code {
   border-radius: 6px;
   mix-blend-mode: screen;
 }
+
+/* Missing textures and linked files: impossible to miss, on purpose. */
+.file-warn {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #6c5514;
+  border-radius: 8px;
+  background: #221c0c;
+  color: var(--accent);
+  font-size: 12.5px;
+}
+.file-warn details { margin-top: 4px; color: var(--muted); }
+.file-warn summary { cursor: pointer; color: var(--accent); }
+.file-warn ul { margin: 6px 0 0; padding-left: 18px; max-height: 180px; overflow: auto; word-break: break-all; }
+.job-rinfo { margin-top: 2px; }

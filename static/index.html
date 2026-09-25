@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BlendQueue — local render queue for Blender</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=9">
+  <link rel="stylesheet" href="/static/styles.css?v=11">
 </head>
 <body>
   <header class="topbar">
@@ -41,8 +41,8 @@
           <span class="muted" data-i18n>rendered in place, without copying</span>
         </div>
         <div class="dz-note muted">
-          <span data-i18n>Adding by path keeps the .blend's relative textures working. Dropping a file copies it into</span>
-          <code>data/uploads</code><span data-i18n>. You can also register a whole folder and every .blend inside is added.</span>
+          <span data-i18n>Dropped files are looked up on disk and rendered where they are, so their relative textures and linked files keep working. A copy into</span>
+          <code>data/uploads</code> <span data-i18n>is only made if you ask for it. You can also register a whole folder and every .blend inside is added.</span>
         </div>
         <div id="uploadStatus" class="muted"></div>
       </div>
@@ -86,6 +86,8 @@
         <button class="btn sm" id="fsUp" data-i18n>↑ Up</button>
         <input class="input grow" id="fsPath" data-i18n-ph placeholder="Type a path and press Go">
         <button class="btn sm" id="fsGo" data-i18n>Go</button>
+        <button class="btn sm hidden" id="fsMkdir" data-i18n data-i18n-title
+          title="Create a folder here and open it">New folder…</button>
       </div>
       <div class="fs-list" id="fsList"></div>
       <div class="modal-foot">
@@ -210,6 +212,27 @@
     </div>
   </div>
 
+  <!-- Modal: a dropped file that was not found on disk -->
+  <div class="modal hidden" id="whereModal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 data-i18n>Where is this file?</h3>
+        <button class="x" data-close="whereModal">✕</button>
+      </div>
+      <div class="settings">
+        <div><strong id="whereNames"></strong></div>
+        <div class="muted small" data-i18n>The browser does not tell BlendQueue where a dropped file lives, and it was not found in the folders you already use. A copy cannot see the textures and linked .blend files next to the original, so they would render missing.</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" id="whereUpload" data-i18n data-i18n-title
+          title="Only for a .blend that has everything packed inside">Upload a copy anyway</button>
+        <div class="foot-actions">
+          <button class="btn primary" id="whereFind" data-i18n>Find it on disk…</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: job log -->
   <div class="modal hidden" id="logModal">
     <div class="modal-box wide">
@@ -234,7 +257,7 @@
     </div>
   </div>
 
-  <script src="/static/i18n.js?v=9"></script>
-  <script src="/static/app.js?v=9"></script>
+  <script src="/static/i18n.js?v=11"></script>
+  <script src="/static/app.js?v=11"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # BlendQueue smoke tests. The server must be running (run.sh).
-#   tests/run_smoke.sh quick | multi | cycles | format | script
+#   tests/run_smoke.sh quick | multi | cycles | format | script | overwrite | size | locate | fs
 #   tests/run_smoke.sh real "/path/file.blend" [render]
 set -euo pipefail
 cd "$(dirname "$0")/.."

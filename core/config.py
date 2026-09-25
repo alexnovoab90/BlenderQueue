@@ -11,14 +11,16 @@ import time
 from . import system
 
 APP_DIR = pathlib.Path(__file__).resolve().parent.parent
-DATA_DIR = APP_DIR / "data"
+# BLENDQUEUE_DATA runs a second server on its own state, e.g. to test without
+# touching the real queue while it renders.
+DATA_DIR = pathlib.Path(os.environ.get("BLENDQUEUE_DATA") or APP_DIR / "data").resolve()
 UPLOADS_DIR = DATA_DIR / "uploads"
 OUTPUTS_DIR = DATA_DIR / "outputs"
 LOGS_DIR = DATA_DIR / "logs"
 PREVIEWS_DIR = DATA_DIR / "previews"
 INSPECT_DIR = DATA_DIR / "inspect"
 SCRIPTS_DIR = DATA_DIR / "scripts"   # copy of the script each job runs
-TESTS_DIR = DATA_DIR / "tests"
+TESTS_DIR = APP_DIR / "data" / "tests"   # the fixtures stay put whatever the data folder
 STATIC_DIR = APP_DIR / "static"
 BLENDER_SIDE_DIR = APP_DIR / "blender_side"
 STATE_FILE = DATA_DIR / "state.json"

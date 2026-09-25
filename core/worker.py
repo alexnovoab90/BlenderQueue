@@ -53,8 +53,9 @@ class RenderWorker:
         if not job or job.get("status") == "running":
             return False
         self._cancel_ids.discard(job_id)
-        self.store.update_job(job_id, status="queued", error=None, progress={}, outputs=[],
-                              preview={}, started_at=None, finished_at=None, duration_s=None)
+        self.store.update_job(job_id, status="queued", error=None, note=None, progress={},
+                              outputs=[], preview={}, render_info=None, started_at=None,
+                              finished_at=None, duration_s=None)
         self.on_update()
         return True
 
@@ -98,7 +99,8 @@ class RenderWorker:
         self.current_job_id = jid
         self.current_tail.clear()
         started = time.time()
-        self.store.update_job(jid, status="running", started_at=started, error=None,
+        self.store.update_job(jid, status="running", started_at=started, error=None, note=None,
+                              render_info=None,
                               progress={"percent": 0.0, "frame": None, "message": "starting Blender…"})
         self.on_update()
         settings = self.store.settings()
@@ -156,6 +158,10 @@ class RenderWorker:
                     m = renderer.SAVED_RE.search(line)
                     if m:
                         outputs.append(m.group(1))
+                    info = renderer.parse_render_info(line)
+                    if info:
+                        self.store.update_job(jid, render_info=info)
+                        self.on_update()
                     if parser.feed(line):
                         nowt = time.time()
                         if nowt - last_push > 0.35:
@@ -184,7 +190,14 @@ class RenderWorker:
                     # "Saved:", so no line means nothing was written. Scanning
                     # the folder there would pick up a previous render's files.
                     outputs = self._scan_outputs(job, scene_report, started)
-                note = self._empty_render_note(log_path) if not outputs else None
+                failure, note = (None, None)
+                if not outputs:
+                    failure, note = self._why_nothing(log_path, parser.frame is not None)
+                if failure:
+                    self.store.update_job(jid, status="error", finished_at=time.time(),
+                                          duration_s=duration, error=failure)
+                    self._notify(settings, "Render failed", self._label(job))
+                    return
                 preview = {}
                 if settings.get("preview_video", True):
                     dest = str(config.PREVIEWS_DIR / f"{jid}.mp4")
@@ -262,21 +275,28 @@ class RenderWorker:
             pass
 
     @staticmethod
-    def _empty_render_note(log_path) -> str | None:
-        """Why a successful render wrote nothing, so the job does not just say 'done'.
+    def _why_nothing(log_path, rendered_a_frame: bool) -> tuple:
+        """(error, note) for a render that exited with code 0 but wrote no file.
 
-        The usual cause is Overwrite being off in the .blend while the frames are
-        already on disk: Blender skips every one of them and exits fine.
+        Skipping frames that are already on disk (Overwrite off) is a legitimate
+        outcome and only earns a note. Anything else is a failure: Blender
+        reports some errors -- a video encoder that cannot start, for one -- and
+        still exits with 0, which used to end as "done" with nothing on disk.
         """
         try:
             data = log_path.read_text(encoding="utf-8", errors="replace")
         except Exception:
-            return "No files were written. Check the job log."
+            data = ""
         if "skipped to not overwrite" in data or "Skipping existing frame" in data:
             skipped = data.count("Skipping existing frame")
-            return (f"No files written: Blender skipped {skipped} frame(s) that already exist "
-                    "(Overwrite is off). Re-queue with Overwrite to render them again.")
-        return "No files were written. Check the job log."
+            return None, (f"No files written: Blender skipped {skipped} frame(s) that already "
+                          "exist (Overwrite is off). Re-queue with Overwrite to render them again.")
+        errors = renderer.blender_errors(data)
+        if errors:
+            return "Blender rendered nothing: " + " · ".join(errors[:2]), None
+        if not rendered_a_frame:
+            return "Blender exited without rendering any frame. Check the job log.", None
+        return None, "Blender rendered, but no output file was found. Check the job log."
 
     @staticmethod
     def _error_tail(log_path, limit: int = 800) -> str:
@@ -293,6 +313,9 @@ class RenderWorker:
                     if line[:1] not in (" ", "\t"):
                         return ("Script error: " + line.strip())[:limit]
                 break
+        errors = renderer.blender_errors(data)
+        if errors:
+            return " · ".join(errors[:2])[:limit]
         tail = " | ".join(lines[-3:])[-limit:]
         return tail or "Check the job log."
 

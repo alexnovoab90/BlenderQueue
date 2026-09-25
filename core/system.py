@@ -156,6 +156,26 @@ def is_runnable(path: str) -> bool:
     return IS_WINDOWS or os.access(path, os.X_OK)
 
 
+_WIN_RESERVED = ({"CON", "PRN", "AUX", "NUL"} | {f"COM{i}" for i in range(1, 10)}
+                 | {f"LPT{i}" for i in range(1, 10)})
+
+
+def folder_name_problem(name: str) -> str | None:
+    """Why `name` cannot be a new folder on this system, or None if it can."""
+    if not name or name in (".", ".."):
+        return "Type a name for the folder"
+    if "/" in name or any(ord(c) < 32 for c in name):
+        return "A folder name cannot contain / or control characters"
+    if IS_WINDOWS:
+        if any(c in '<>:"\\|?*' for c in name):
+            return 'A folder name cannot contain any of < > : " \\ | ? *'
+        if name.endswith((" ", ".")):
+            return "A folder name cannot end with a space or a dot"
+        if name.split(".")[0].upper() in _WIN_RESERVED:
+            return "Windows reserves that name"
+    return None
+
+
 def fs_roots() -> list:
     """Starting points of the file browser: drives on Windows, / and the
     mounted volumes on macOS and Linux, plus the usual personal folders."""

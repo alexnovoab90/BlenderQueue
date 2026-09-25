@@ -7,16 +7,50 @@ import subprocess
 
 from . import config, formats, system
 
-FRA_RE = re.compile(r"Fra:(\d+)")
-SAMPLE_RE = re.compile(r"Sample (\d+)/(\d+)")
+# Blender 4.2+ logs "Fra: 12 | Rendering 5 / 64 samples" and "Rendering frame 12";
+# older builds print "Fra:12 Mem:... | Sample 5/64".
+FRA_RE = re.compile(r"Fra:\s*(\d+)|Rendering frame (\d+)")
+SAMPLE_RE = re.compile(r"Sample (\d+)/(\d+)|Rendering (\d+) / (\d+) samples")
 TIME_RE = re.compile(r"Time: *([0-9:.]+)")
 REMAIN_RE = re.compile(r"Remaining: *([0-9:.]+)")
 SAVED_RE = re.compile(r"Saved: *'([^']+)'")
 NOISE_RE = re.compile(r"blendkit|zozo|Registered|Read prefs|Reading prefs", re.I)
+# "00:02.781  video.write | ERROR Couldn't initialize..." (4.2+) or "Error: ..." (older).
+ERROR_RE = re.compile(r"\|\s*ERROR\s+(.+)$|^(?:Error|ERROR):?\s+(.+)$")
+ERROR_NOISE_RE = re.compile(r"Not freed memory|unfreed memory", re.I)
+RENDER_INFO_RE = re.compile(
+    r"\[blendqueue\] render: engine=(\S+) samples=(\S+) size=(\d+)x(\d+) format=(\S+)")
 
 
 def is_noise(line: str) -> bool:
     return bool(NOISE_RE.search(line))
+
+
+def blender_errors(log_text: str) -> list:
+    """Error lines Blender printed while rendering, in order, without repeats.
+
+    Only Blender's output counts: the log starts with the command line, whose
+    generated Python mentions errors of its own.
+    """
+    body = log_text.split("\n\n", 1)[1] if log_text.startswith("CMD:") else log_text
+    out = []
+    for line in body.splitlines():
+        m = ERROR_RE.search(line.strip())
+        if not m:
+            continue
+        msg = (m.group(1) or m.group(2) or "").strip()
+        if msg and not ERROR_NOISE_RE.search(msg) and msg not in out:
+            out.append(msg)
+    return out
+
+
+def parse_render_info(line: str) -> dict | None:
+    """What Blender is about to render with, from the line final_expr() prints."""
+    m = RENDER_INFO_RE.search(line)
+    if not m:
+        return None
+    return {"engine": m.group(1), "samples": m.group(2), "width": int(m.group(3)),
+            "height": int(m.group(4)), "format": m.group(5)}
 
 
 def sanitize(name: str) -> str:
@@ -220,6 +254,30 @@ def engine_code(engine: str) -> list:
     return lines
 
 
+def size_code(ov: dict) -> list:
+    """Output size in pixels. The size asked for is the size of the file, so the
+    .blend's percentage is reset to 100 unless the job sets its own."""
+    rx, ry = ov.get("resolution_x"), ov.get("resolution_y")
+    if not rx and not ry:
+        return []
+    lines = ["try:", "    _r = sc.render"]
+    if rx and ry:
+        lines.append(f"    _r.resolution_x, _r.resolution_y = {int(rx)}, {int(ry)}")
+    elif rx:
+        # Only one side given: the other keeps the .blend's aspect ratio
+        # (rounded half up, like the size the UI shows).
+        lines += [f"    _r.resolution_y = max(4, int(_r.resolution_y * {int(rx)} / _r.resolution_x + 0.5))",
+                  f"    _r.resolution_x = {int(rx)}"]
+    else:
+        lines += [f"    _r.resolution_x = max(4, int(_r.resolution_x * {int(ry)} / _r.resolution_y + 0.5))",
+                  f"    _r.resolution_y = {int(ry)}"]
+    if not ov.get("resolution_percentage"):
+        lines.append("    _r.resolution_percentage = 100")
+    lines += ["except Exception as _e:",
+              "    print('[blendqueue] could not apply the size:', _e)"]
+    return lines
+
+
 def override_expr(job: dict) -> str | None:
     ov = job.get("overrides") or {}
     lines = ["import bpy",
@@ -232,9 +290,10 @@ def override_expr(job: dict) -> str | None:
             "try:",
             f"    if sc.render.engine == 'CYCLES': sc.cycles.samples = {n}",
             f"    else: sc.eevee.taa_render_samples = {n}",
-            "except Exception:",
-            "    pass",
+            "except Exception as _e:",
+            "    print('[blendqueue] could not apply samples:', _e)",
         ]
+    lines += size_code(ov)
     if ov.get("resolution_percentage"):
         lines += _guard(f"sc.render.resolution_percentage = {int(ov['resolution_percentage'])}",
                         "resolution")
@@ -246,6 +305,47 @@ def override_expr(job: dict) -> str | None:
         lines += _guard(f"sc.render.use_overwrite = {bool(ov['overwrite'])}", "overwrite")
     lines += format_code(ov)
     return "\n".join(lines) if len(lines) > 2 else None
+
+
+def final_expr(job: dict) -> str:
+    """Runs last, after the overrides and the user's script.
+
+    Video codecs with chroma subsampling (H.264, H.265, MPEG-4...) refuse odd
+    sizes, and Blender then exits with code 0 having written nothing: 66% of
+    1920x1080 is 1267x712. The size is rounded down to even, one pixel at most.
+    It also prints what Blender is about to render with, which is the only
+    trustworthy answer to "did my overrides apply?".
+    """
+    return "\n".join([
+        "import bpy",
+        f"sc = bpy.data.scenes.get({job['scene']!r}) or bpy.context.scene",
+        "_r = sc.render",
+        "try:",
+        "    _p = _r.resolution_percentage",
+        "    _w, _h = _r.resolution_x * _p // 100, _r.resolution_y * _p // 100",
+        "    if _r.image_settings.file_format == 'FFMPEG' and (_w % 2 or _h % 2):",
+        "        if _r.use_border and _r.use_crop_to_border:",
+        "            print('[blendqueue] the cropped video size may be odd:', _w, _h)",
+        "        else:",
+        "            _r.resolution_x, _r.resolution_y = max(4, _w - _w % 2), max(4, _h - _h % 2)",
+        "            _r.resolution_percentage = 100",
+        "            print('[blendqueue] video needs an even size: %dx%d rendered as %dx%d'",
+        "                  % (_w, _h, _r.resolution_x, _r.resolution_y))",
+        "except Exception as _e:",
+        "    print('[blendqueue] could not check the video size:', _e)",
+        "try:",
+        "    _s = (sc.cycles.samples if _r.engine == 'CYCLES' else",
+        "          sc.eevee.taa_render_samples if 'EEVEE' in _r.engine else '-')",
+        "    print('[blendqueue] render: engine=%s samples=%s size=%dx%d format=%s' % (",
+        "        _r.engine, _s, _r.resolution_x * _r.resolution_percentage // 100,",
+        "        _r.resolution_y * _r.resolution_percentage // 100, _r.image_settings.file_format))",
+        "except Exception as _e:",
+        "    print('[blendqueue] could not read the render settings:', _e)",
+        # Python's stdout is block-buffered into a pipe: without this, every
+        # print above reaches the log after the render, hours late.
+        "import sys",
+        "sys.stdout.flush()",
+    ])
 
 
 SCRIPT_HEADER = """# Generated by BlendQueue: this is the file Blender runs for this job.
@@ -290,6 +390,7 @@ def build_cmd(blender: str, job: dict, scene_report: dict | None,
     if script_path:
         # After the overrides: the user script may override any of them.
         args += ["--python", script_path]
+    args += ["--python-expr", final_expr(job)]
     pat = output_pattern(job, scene_report)
     if pat:
         args += ["-o", pat]
@@ -337,15 +438,15 @@ class ProgressParser:
         changed = False
         m = FRA_RE.search(line)
         if m:
-            f = int(m.group(1))
+            f = int(m.group(1) or m.group(2))
             if f != self.frame:
                 self.frame = f
                 self.sample = None
                 changed = True
         m = SAMPLE_RE.search(line)
         if m:
-            self.sample = int(m.group(1))
-            self.sample_total = int(m.group(2))
+            self.sample = int(m.group(1) or m.group(3))
+            self.sample_total = int(m.group(2) or m.group(4))
             changed = True
         m = TIME_RE.search(line)
         if m:

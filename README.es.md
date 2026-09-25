@@ -21,7 +21,7 @@ elección se recuerda en ese navegador.
 Renderizar varios `.blend` seguidos suele significar quedarse mirando una consola, o abrir cada
 archivo solo para ver su rango de frames y su configuración de salida. BlendQueue te lleva la
 cola: lee lo que cada escena tiene configurado de verdad, te deja sobrescribir lo que quieras
-(frames, motor, samples, GPU/CPU, resolución, **formato de salida**, carpeta destino) y ejecuta
+(frames, motor, samples, GPU/CPU, **tamaño en píxeles**, **formato de salida**, carpeta destino) y ejecuta
 un trabajo a la vez para que Blender no pelee consigo mismo por la GPU.
 
 ## Requisitos
@@ -82,13 +82,33 @@ Luego, en la interfaz:
 
 ## Cómo agregar archivos
 
-- **Seleccionar ruta del equipo…** → registra el `.blend` *en su lugar*. Recomendado: conserva
-  las texturas con rutas relativas. También puedes registrar una carpeta completa y se agregan
-  todos sus `.blend`.
-- **Arrastrar y soltar** → copia el archivo a `data/uploads/`. Ojo con proyectos que usan
-  texturas relativas: la copia las rompe.
+- **Seleccionar ruta del equipo…** → registra el `.blend` *en su lugar*. También puedes
+  registrar una carpeta completa y se agregan todos sus `.blend`.
+- **Arrastrar y soltar** (o *elegir archivos…*) → el navegador nunca le dice a una página dónde
+  está un archivo arrastrado, así que BlendQueue primero lo busca: mismo nombre, tamaño y fecha,
+  en las carpetas donde ya trabajas (las de tus otros archivos y tus carpetas de render recientes,
+  y las que están al lado). Si lo encuentra, lo renderiza donde está. Si no, te pide buscarlo en
+  el disco, o subir igual una copia a `data/uploads/`.
+
+Una copia no ve las texturas ni los `.blend` enlazados que están junto al original: Blender
+resuelve las rutas `//` contra la carpeta de la copia y los renderiza faltantes. Cada archivo
+avisa de los externos que faltan, y una copia subida tiene **Buscar el original…**, que la
+reemplaza por el original (los trabajos en cola lo siguen y la copia se borra). Quitar una copia
+subida de la lista también la borra; tu original nunca se toca.
 
 La inspección corre en paralelo con los renders, así que agregar archivos nunca frena la cola.
+
+## Tamaño del render
+
+*Overrides…* → **Tamaño** recibe el ancho y el alto del render en píxeles, lo que necesites:
+1280 × 720 o 1080 × 1350 da lo mismo. Si dejas un lado vacío se mantiene la proporción del
+`.blend`. Lo que escribes es el tamaño del archivo: el porcentaje de resolución del `.blend`
+vuelve a 100 %.
+
+Los códecs de video como H.264 necesitan ancho y alto pares. Con un tamaño impar Blender no
+logra iniciar el codificador y termina como si todo hubiera salido bien, sin escribir nada; por
+eso BlendQueue baja un tamaño de video impar al par más cercano (un píxel como máximo) y lo deja
+anotado en el log. La etiqueta de la escena siempre muestra el tamaño que se va a renderizar.
 
 ## Cambiar el formato de salida
 
@@ -159,20 +179,30 @@ nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
 
 ```
 blender.exe -b "archivo.blend" -S "Escena" [--python-exit-code 1] [--python-expr overrides]
-            [--python data/scripts/job_<id>.py] -o "salida####" -s INICIO -e FIN -a
+            [--python data/scripts/job_<id>.py] --python-expr chequeos-finales
+            -o "salida####" -s INICIO -e FIN -a
 ```
 
 Lo que va entre corchetes solo aparece cuando ese trabajo lo necesita.
 
 - **Sin override de salida** se usa tal cual la carpeta guardada en el `.blend`.
-- **Con override** se escribe `<archivo>_<escena>_####.<ext>` en la carpeta elegida.
+- **Con override** se escribe `<archivo>_<escena>_####.<ext>` en la carpeta elegida. El
+  selector de carpetas tiene **Nueva carpeta…** para crear una en el momento.
 - Motor, samples y dispositivo se toman del archivo salvo override por trabajo.
 - Los overrides se aplican con un fragmento de Python generado que corre dentro de Blender. Cada
   asignación va protegida: un valor no soportado deja una línea en el log en vez de tumbar el
   render (eso también absorbe el rename `BLENDER_EEVEE` / `BLENDER_EEVEE_NEXT` entre versiones).
 - El script de un trabajo va como `--python` *después* de la expresión, junto con
   `--python-exit-code 1` para que una excepción en el script haga fallar el trabajo.
-- Cancelar mata el proceso de Blender (`taskkill`); reintentar vuelve a encolar; ↑/↓ reordenan.
+- Una última expresión corre después de todo: baja a par los tamaños de video impares e imprime
+  el motor, los samples y el tamaño con que Blender va a renderizar. La tarjeta del trabajo
+  muestra esa línea (*En Blender: EEVEE · 10 spp · 1280×720 px*), así que un override que no se
+  aplicó no pasa desapercibido.
+- Blender reporta algunas fallas y aun así sale con código 0 — por ejemplo, un codificador de
+  video que no arranca. Un trabajo que no escribió nada termina en **error** con el mensaje de
+  Blender, salvo que los frames se hayan saltado a propósito (ver
+  [Frames que ya existen](#frames-que-ya-existen)).
+- Cancelar mata Blender junto con sus procesos hijos; reintentar vuelve a encolar; ↑/↓ reordenan.
 - Un solo render a la vez: Blender ya satura GPU/CPU.
 
 ## Estructura
@@ -216,14 +246,28 @@ tests\run_smoke.bat quick
 Modos: `quick` (secuencia EEVEE), `multi` (selección de escena con `-S`), `cycles` (GPU),
 `format` (overrides de formato: EXR, video, editar un trabajo en cola, aplicar a toda la cola),
 `script` (scripts por trabajo: biblioteca, efecto real en el render, copia congelada, fallo),
-`overwrite` (frames existentes: preflight, saltarlos, forzar la sobrescritura) y
-`real "G:/ruta/archivo.blend" [render]` para uno de tus propios archivos.
+`overwrite` (frames existentes: preflight, saltarlos, forzar la sobrescritura),
+`size` (tamaño en píxeles, tamaños de video impares, un render que no escribe nada y sale con
+código 0), `locate` (archivos arrastrados encontrados en el disco, copias reemplazadas por su
+original), `fs` (crear una carpeta desde el selector) y `real "G:/ruta/archivo.blend" [render]`
+para uno de tus propios archivos.
+
+Para probar mientras BlendQueue está renderizando, levanta un segundo servidor con su propia
+carpeta de datos; así las pruebas nunca tocan tu cola:
+
+```bash
+BLENDQUEUE_DATA=/tmp/bq-test .venv/bin/python server.py --port 8790 --no-browser
+BLENDQUEUE_URL=http://127.0.0.1:8790 .venv/bin/python tests/api_smoke.py size
+```
 
 ## Problemas comunes
 
 - **Blender no encontrado** → Ajustes → ruta de `blender.exe`, o define `BLENDQUEUE_BLENDER`.
-- **Texturas rosadas / faltan archivos** → agrega el `.blend` *por ruta* en vez de arrastrarlo, o
-  empaqueta las texturas. El reporte de inspección cuenta los archivos externos que faltan.
+- **Texturas rosadas / faltan archivos** → lee el aviso en la tarjeta del archivo. Una copia
+  subida pierde todas las rutas relativas al original: usa **Buscar el original…**. Si no, los
+  archivos también faltan junto al original — corrige las rutas en Blender o empaquétalos.
+- **«Blender rendered nothing: …»** → es el error del propio Blender (un códec que no acepta ese
+  tamaño, falta la cámara…). *Ver log* tiene la salida completa.
 - **Puerto ocupado** → el lanzador detecta si ya está corriendo y solo abre el navegador.
 - **«This system cannot open a file manager» (Linux)** → instala `xdg-utils`, o usa la ruta que
   muestra el trabajo. Igual con las notificaciones: necesitan `notify-send` (`libnotify-bin`).

@@ -10,6 +10,7 @@ import re
 import subprocess
 import threading
 import time
+import uuid
 import webbrowser
 from contextlib import asynccontextmanager
 
@@ -20,7 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import config, formats, notifier, renderer, system
+from core import config, formats, locate, notifier, renderer, system
 from core.inspector import InspectorLane
 from core.store import Store
 from core.worker import RenderWorker
@@ -177,6 +178,45 @@ def _add_and_inspect(path: str, origin: str = "path") -> dict:
     return rec
 
 
+def _is_upload(path: str) -> bool:
+    """True for BlendQueue's own copies of dropped files."""
+    try:
+        root = os.path.normcase(os.path.abspath(str(config.UPLOADS_DIR)))
+        return os.path.normcase(os.path.abspath(path)).startswith(root + os.sep)
+    except Exception:
+        return False
+
+
+def _drop_upload_copy(path: str) -> None:
+    """Deletes an uploaded copy nothing points at any more (the original is untouched)."""
+    if not path or not _is_upload(path):
+        return
+    key = os.path.normcase(os.path.abspath(path))
+    if any(os.path.normcase(os.path.abspath(f.get("path") or "")) == key for f in store.files()):
+        return
+    try:
+        os.remove(path)
+        folder = os.path.dirname(os.path.abspath(path))
+        if os.path.normcase(folder) != os.path.normcase(os.path.abspath(str(config.UPLOADS_DIR))):
+            os.rmdir(folder)            # the upload's own folder, empty by now
+    except OSError:
+        pass
+
+
+def _known_dirs() -> list:
+    """Folders the user works in, newest first: where a dropped file probably is."""
+    dirs = list(store.recent_dirs())
+    for f in store.files():
+        if f.get("path") and not _is_upload(f["path"]):
+            dirs.append(os.path.dirname(f["path"]))
+    for j in reversed(store.jobs()):
+        if (j.get("overrides") or {}).get("output_dir"):
+            dirs.append(j["overrides"]["output_dir"])
+        if j.get("file_path") and not _is_upload(j["file_path"]):
+            dirs.append(os.path.dirname(j["file_path"]))
+    return dirs
+
+
 @app.post("/api/files/add")
 def api_files_add(body: AddFilesBody):
     added = []
@@ -187,6 +227,7 @@ def api_files_add(body: AddFilesBody):
         if not os.path.exists(p):
             raise HTTPException(404, f"Does not exist: {p}")
         if os.path.isdir(p):
+            store.remember_dir(p)
             for name in sorted(os.listdir(p)):
                 fp = os.path.join(p, name)
                 if os.path.isfile(fp) and fp.lower().endswith(".blend"):
@@ -194,8 +235,72 @@ def api_files_add(body: AddFilesBody):
             continue
         if not p.lower().endswith(".blend"):
             raise HTTPException(400, f"Not a .blend file: {p}")
+        store.remember_dir(os.path.dirname(os.path.abspath(p)))
         added.append(_add_and_inspect(p))
     return {"added": added}
+
+
+class LocateBody(BaseModel):
+    files: list[dict]
+
+
+@app.post("/api/files/locate")
+def api_files_locate(body: LocateBody):
+    """Where dropped files live on disk, so they are added in place, not uploaded.
+
+    `start` is the most recent folder that still exists: where the file browser
+    opens when a file was not found.
+    """
+    known = _known_dirs()
+    start = next((d for d in known if os.path.isdir(d)), "")
+    return {"found": locate.find(body.files, known), "start": start}
+
+
+class RelocateBody(BaseModel):
+    path: str
+
+
+@app.post("/api/files/{fid}/relocate")
+def api_file_relocate(fid: str, body: RelocateBody):
+    """Points an uploaded copy at its original .blend, then deletes the copy.
+
+    The copy cannot see the textures and linked files next to the original;
+    the original can. Queued jobs follow the file.
+    """
+    frec = store.get_file(fid)
+    if not frec:
+        raise HTTPException(404, "File not found")
+    p = os.path.abspath((body.path or "").strip().strip('"'))
+    if not os.path.isfile(p) or not p.lower().endswith(".blend"):
+        raise HTTPException(400, f"Not a .blend file: {p}")
+    if any(j.get("file_id") == fid and j.get("status") == "running" for j in store.jobs()):
+        raise HTTPException(409, "This file is rendering: wait or cancel it first")
+    old = frec.get("path") or ""
+    key = os.path.normcase(p)
+    other = next((f for f in store.files() if f["id"] != fid
+                  and os.path.normcase(os.path.abspath(f.get("path") or "")) == key), None)
+    if other:
+        if frec.get("origin") != "upload":
+            raise HTTPException(409, "That .blend is already in the list")
+        # The original is already listed: the copy's queued jobs move to it
+        # and the copy goes away.
+        for j in store.jobs():
+            if j.get("file_id") == fid and j.get("status") == "queued":
+                store.update_job(j["id"], file_id=other["id"], file_path=other["path"],
+                                 file_name=other["name"])
+        store.remove_file(fid)
+        _drop_upload_copy(old)
+        return {"file": store.get_file(other["id"]), "merged": True}
+    st = os.stat(p)
+    store.update_file(fid, path=p, name=os.path.basename(p), size=st.st_size, mtime=st.st_mtime,
+                      origin="path", status="pending", report=None, inspect_error=None)
+    for j in store.jobs():
+        if j.get("file_id") == fid and j.get("status") == "queued":
+            store.update_job(j["id"], file_path=p, file_name=os.path.basename(p))
+    store.remember_dir(os.path.dirname(p))
+    _drop_upload_copy(old)
+    inspector.request(fid)
+    return {"file": store.get_file(fid)}
 
 
 @app.post("/api/files/upload")
@@ -205,10 +310,11 @@ async def api_files_upload(files: list[UploadFile] = FastAPIFile(...)):
         name = os.path.basename(uf.filename or "file.blend")
         if not name.lower().endswith(".blend"):
             continue
-        dest = config.UPLOADS_DIR / name
-        if dest.exists():
-            stem, ext = os.path.splitext(name)
-            dest = config.UPLOADS_DIR / f"{stem}_{int(time.time())}{ext}"
+        # One folder per upload keeps the original file name: it is how the
+        # original is found again, and it names the render outputs.
+        folder = config.UPLOADS_DIR / uuid.uuid4().hex[:10]
+        folder.mkdir(parents=True, exist_ok=True)
+        dest = folder / name
         with open(dest, "wb") as out:
             while True:
                 chunk = await uf.read(4 * 1024 * 1024)
@@ -232,8 +338,10 @@ def api_file_delete(fid: str):
     for j in store.jobs():
         if j.get("file_id") == fid and j.get("status") in ("queued", "running"):
             raise HTTPException(409, "This file has queued or running jobs.")
-    if not store.remove_file(fid):
+    frec = store.get_file(fid)
+    if not frec or not store.remove_file(fid):
         raise HTTPException(404, "File not found")
+    _drop_upload_copy(frec.get("path") or "")
     return {"ok": True}
 
 
@@ -255,7 +363,9 @@ def _clean_overrides(raw: dict | None) -> dict:
     device = str(ov.get("device") or "").strip().upper()
     if device in ("GPU", "CPU"):
         out["device"] = device
-    for key, lo, hi in (("samples", 1, 1_000_000), ("resolution_percentage", 1, 400)):
+    # Blender accepts 4..65536 pixels per side.
+    for key, lo, hi in (("samples", 1, 1_000_000), ("resolution_percentage", 1, 400),
+                        ("resolution_x", 4, 65536), ("resolution_y", 4, 65536)):
         val = ov.get(key)
         if val in (None, ""):
             continue
@@ -263,8 +373,11 @@ def _clean_overrides(raw: dict | None) -> dict:
             val = int(val)
         except (TypeError, ValueError):
             raise HTTPException(400, f"Invalid value for {key}")
-        if lo <= val <= hi:
-            out[key] = val
+        # Out of range is an error, not a silent drop: a job that ignores what
+        # was typed looks exactly like a job whose overrides "did nothing".
+        if not lo <= val <= hi:
+            raise HTTPException(400, f"{key} must be between {lo} and {hi}")
+        out[key] = val
     out_dir = str(ov.get("output_dir") or "").strip().strip('"')
     if out_dir:
         out["output_dir"] = out_dir
@@ -333,6 +446,8 @@ def api_job_add(body: JobBody):
         "scene_format": scene.get("file_format"),
         "scene_container": scene.get("ffmpeg_container"),
     }
+    if job["overrides"].get("output_dir"):
+        store.remember_dir(job["overrides"]["output_dir"])
     return {"job": store.add_job(job)}
 
 
@@ -630,6 +745,32 @@ def api_fs_list(path: str = ""):
     dirs.sort(key=lambda x: x["name"].lower())
     blends.sort(key=lambda x: x["name"].lower())
     return {"path": path, "parent": parent, "entries": dirs + blends}
+
+
+class MkdirBody(BaseModel):
+    parent: str
+    name: str
+
+
+@app.post("/api/fs/mkdir")
+def api_fs_mkdir(body: MkdirBody):
+    """Creates a folder from the folder picker, to send a render somewhere new."""
+    raw = (body.parent or "").strip().strip('"')
+    parent = os.path.abspath(raw) if raw else ""
+    if not parent or not os.path.isdir(parent):
+        raise HTTPException(404, "Folder not found")
+    name = (body.name or "").strip()
+    problem = system.folder_name_problem(name)
+    if problem:
+        raise HTTPException(400, problem)
+    path = os.path.join(parent, name)
+    if os.path.exists(path):
+        raise HTTPException(409, "That folder already exists")
+    try:
+        os.mkdir(path)
+    except OSError as exc:
+        raise HTTPException(400, f"Could not create the folder: {exc.strerror or exc}")
+    return {"path": path}
 
 
 # ---------------------------------------------------------------- settings

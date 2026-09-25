@@ -31,7 +31,7 @@ class Store:
         self._path = str(path or config.STATE_FILE)
         self._lock = threading.RLock()
         self._data = {"settings": dict(DEFAULT_SETTINGS), "files": [], "jobs": [],
-                      "scripts": [], "caps": {}}
+                      "scripts": [], "caps": {}, "recent_dirs": []}
         self.load()
 
     # ---------------- persistence ----------------
@@ -51,6 +51,8 @@ class Store:
                         self._data["scripts"] = data["scripts"]
                     if isinstance(data.get("caps"), dict):
                         self._data["caps"] = data["caps"]
+                    if isinstance(data.get("recent_dirs"), list):
+                        self._data["recent_dirs"] = data["recent_dirs"]
             except Exception:
                 pass  # corrupt state: start fresh (the logs stay in data/logs)
             self._recover()
@@ -138,6 +140,24 @@ class Store:
                 return
             self._data["caps"] = caps
             self.save()
+
+    def recent_dirs(self) -> list:
+        """Folders the user worked in lately, newest first (to find dropped files)."""
+        with self._lock:
+            return list(self._data.get("recent_dirs") or [])
+
+    def remember_dir(self, path: str, limit: int = 40) -> None:
+        if not path:
+            return
+        path = os.path.abspath(path)
+        key = os.path.normcase(path)
+        with self._lock:
+            dirs = [d for d in self._data.get("recent_dirs") or []
+                    if os.path.normcase(d) != key]
+            dirs.insert(0, path)
+            if dirs != self._data.get("recent_dirs"):
+                self._data["recent_dirs"] = dirs[:limit]
+                self.save()
 
     def files(self) -> list:
         with self._lock:
