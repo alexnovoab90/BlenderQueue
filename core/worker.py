@@ -135,6 +135,7 @@ class RenderWorker:
             cmd = renderer.build_cmd(blender, job, scene_report, script_path)
             log_path = config.LOGS_DIR / f"job_{jid}.log"
             parser = renderer.ProgressParser(fstart, fend)
+            clock = renderer.FrameClock()
             outputs = []
 
             with open(log_path, "w", encoding="utf-8", errors="replace") as logf:
@@ -158,16 +159,19 @@ class RenderWorker:
                     m = renderer.SAVED_RE.search(line)
                     if m:
                         outputs.append(m.group(1))
+                        clock.saved(time.time())
                     info = renderer.parse_render_info(line)
                     if info:
                         self.store.update_job(jid, render_info=info)
                         self.on_update()
                     if parser.feed(line):
                         nowt = time.time()
+                        clock.frame(parser.frame, nowt)
                         if nowt - last_push > 0.35:
                             last_push = nowt
-                            self._push_progress(jid, parser, started, fend, total)
+                            self._push_progress(jid, parser, started, fend, total, clock)
                 rc = proc.wait()
+                clock.finish(time.time())
                 with self._lock:
                     self._proc = None
 
@@ -227,7 +231,10 @@ class RenderWorker:
                                       duration_s=duration, outputs=outputs, preview=preview,
                                       note=note,
                                       progress={"percent": 1.0, "frame": fend,
-                                                "message": "completed"})
+                                                "message": "completed",
+                                                "frames_done": clock.done,
+                                                "last_frame_s": clock.last,
+                                                "avg_frame_s": clock.average})
                 self._notify(settings, "Render finished",
                              self._label(job) + f" · {nframes} frame(s)")
         except Exception as exc:
@@ -248,7 +255,8 @@ class RenderWorker:
             except Exception:
                 pass
 
-    def _push_progress(self, jid: str, parser, started: float, fend: int, total: int) -> None:
+    def _push_progress(self, jid: str, parser, started: float, fend: int, total: int,
+                       clock=None) -> None:
         elapsed = time.time() - started
         pct = parser.percent
         eta = None
@@ -263,6 +271,9 @@ class RenderWorker:
             "eta_s": round(eta, 1) if eta else None,
             "remaining_text": parser.remaining_text,
             "message": msg,
+            "frames_done": clock.done if clock else None,
+            "last_frame_s": clock.last if clock else None,
+            "avg_frame_s": clock.average if clock else None,
         })
         self.on_update()
 

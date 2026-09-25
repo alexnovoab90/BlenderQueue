@@ -3,8 +3,8 @@
 **Cola local de renders para Blender.** Cargas tus archivos `.blend`, BlendQueue **inspecciona
 cada escena** en headless (rango de frames, motor, samples, cámara, formato y carpeta de salida)
 y tú eliges qué se renderiza. Un worker secuencial ejecuta los trabajos con Blender en segundo
-plano, muestra el progreso en vivo en el navegador, arma un preview MP4 con ffmpeg y avisa con
-una notificación de Windows al terminar cada uno.
+plano, muestra el progreso en vivo en el navegador (incluido cuánto tardó el último frame), arma
+un preview MP4 con ffmpeg y avisa con una notificación de Windows al terminar cada uno.
 
 Sin nube, sin cuentas, sin telemetría: un servidor FastAPI en `127.0.0.1` y una interfaz
 HTML/CSS/JS sin paso de compilación.

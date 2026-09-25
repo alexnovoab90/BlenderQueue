@@ -464,6 +464,54 @@ class ProgressParser:
         return changed
 
 
+class FrameClock:
+    """How long each frame takes to come out, wall-clock.
+
+    A frame ends when the next one starts, which works the same for image
+    sequences and movies (movies print no "Saved:" line per frame). The last
+    frame ends at its "Saved:" line or, for a movie, when Blender exits.
+    """
+
+    def __init__(self):
+        self.current = None       # frame being rendered
+        self.started = None       # when it started
+        self.first_started = None
+        self.last_end = None
+        self.last_saved = None
+        self.done = 0             # frames that came out
+        self.last = None          # seconds the latest one took
+
+    def frame(self, number, now: float) -> None:
+        if number is None or number == self.current:
+            return
+        if self.current is not None:
+            self._close(now)
+        self.current, self.started = number, now
+        if self.first_started is None:
+            self.first_started = now
+
+    def saved(self, now: float) -> None:
+        self.last_saved = now
+
+    def finish(self, now: float) -> None:
+        if self.current is None:
+            return
+        end = self.last_saved if self.last_saved and self.last_saved >= self.started else now
+        self._close(end)
+        self.current = None
+
+    def _close(self, end: float) -> None:
+        self.last = round(max(0.0, end - self.started), 2)
+        self.last_end = end
+        self.done += 1
+
+    @property
+    def average(self):
+        if not self.done:
+            return None
+        return round((self.last_end - self.first_started) / self.done, 2)
+
+
 # Extensions Blender can produce as a movie (FFmpeg containers + AVI).
 VIDEO_EXTS = tuple(sorted({c["ext"] for c in formats.FFMPEG_CONTAINERS} | {".avi"}))
 

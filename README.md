@@ -3,8 +3,8 @@
 **A local render queue for Blender.** Drop in your `.blend` files, BlendQueue inspects every
 scene headlessly (frame range, engine, samples, camera, output format and path), and you choose
 what renders. A sequential worker runs the jobs with Blender in background mode, shows live
-progress in your browser, builds an MP4 preview with ffmpeg and fires a Windows notification
-when each job finishes.
+progress in your browser (including how long the last frame took), builds an MP4 preview with
+ffmpeg and fires a Windows notification when each job finishes.
 
 No cloud, no accounts, no telemetry: a FastAPI server bound to `127.0.0.1` and a plain
 HTML/CSS/JS front-end with no build step.

@@ -27,6 +27,12 @@ function fmtDur(s) {
   return h ? h + ":" + mm + ":" + ss : m + ":" + ss;
 }
 
+/** Seconds for a single frame: tenths below a minute, m:ss above. */
+function fmtSecs(s) {
+  if (s == null) return "—";
+  return s < 60 ? Number(s).toFixed(1) + " s" : fmtDur(s);
+}
+
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -610,14 +616,16 @@ function progressText(j, pct) {
     let txt = tf("frame {f} of {t} · {p}% · {e} elapsed", {
       f: p.frame ?? "…", t: p.total_frames ?? (fr.end - fr.start + 1),
       p: pct, e: fmtDur(p.elapsed_s) });
+    if (p.last_frame_s != null) txt += tf(" · last frame {s}", { s: fmtSecs(p.last_frame_s) });
     if (p.remaining_text) txt += tf(" · left {x}", { x: p.remaining_text });
     else if (p.eta_s != null) txt += tf(" · left ~{x}", { x: fmtDur(p.eta_s) });
     return txt;
   }
   if (j.status === "done") {
-    const base = tf("done · {n} file(s) · {d}",
-                    { n: (j.outputs || []).length, d: fmtDur(j.duration_s) });
-    return j.note ? base + " · " + j.note : base;
+    let txt = tf("done · {n} file(s) · {d}",
+                 { n: (j.outputs || []).length, d: fmtDur(j.duration_s) });
+    if (p.avg_frame_s != null) txt += tf(" · {s} per frame", { s: fmtSecs(p.avg_frame_s) });
+    return j.note ? txt + " · " + j.note : txt;
   }
   if (j.status === "error") return tf("error: {e}", { e: j.error || "" });
   if (j.status === "canceled") return t("canceled");

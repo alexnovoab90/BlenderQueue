@@ -292,6 +292,8 @@ const ES = {
   "mixed formats: {list}": "formatos mezclados: {list}",
   "queued · frames {a}–{b}": "en cola · frames {a}–{b}",
   "frame {f} of {t} · {p}% · {e} elapsed": "frame {f} de {t} · {p}% · {e} transcurrido",
+  " · last frame {s}": " · último frame {s}",
+  " · {s} per frame": " · {s} por frame",
   " · left {x}": " · resto {x}",
   " · left ~{x}": " · resto ~{x}",
   "done · {n} file(s) · {d}": "listo · {n} archivo(s) · {d}",

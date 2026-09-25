@@ -109,8 +109,14 @@ def mode_quick():
     info = add_and_inspect(TESTS + "/quick.blend")
     if not info:
         return False
-    j = enqueue(info["id"], info["report"]["scenes"][0], TESTS + "/renders/quick_eevee")
-    return bool(j and j["status"] == "done")
+    scene = info["report"]["scenes"][0]
+    j = enqueue(info["id"], scene, TESTS + "/renders/quick_eevee", extra={"overwrite": True})
+    p = (j or {}).get("progress") or {}
+    timed = p.get("frames_done") == scene["frame_count"] and (p.get("avg_frame_s") or 0) > 0 \
+        and (p.get("last_frame_s") or 0) > 0
+    print("    frame times:", "OK" if timed else "FAILED",
+          {k: p.get(k) for k in ("frames_done", "last_frame_s", "avg_frame_s")})
+    return bool(j and j["status"] == "done" and timed)
 
 
 def mode_multi():
