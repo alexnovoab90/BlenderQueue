@@ -467,49 +467,48 @@ class ProgressParser:
 class FrameClock:
     """How long each frame takes to come out, wall-clock.
 
-    A frame ends when the next one starts, which works the same for image
-    sequences and movies (movies print no "Saved:" line per frame). The last
-    frame ends at its "Saved:" line or, for a movie, when Blender exits.
+    An image of a sequence is done at its "Saved:" line. Blender prints
+    "Rendering frame N" even for frames it then skips because they exist, so
+    the start of the next frame proves nothing there. Movies print no "Saved:"
+    per frame: a movie frame ends when the next one starts, the last one when
+    Blender exits.
     """
 
-    def __init__(self):
+    def __init__(self, movie: bool = False):
+        self.movie = movie
         self.current = None       # frame being rendered
-        self.started = None       # when it started
-        self.first_started = None
-        self.last_end = None
-        self.last_saved = None
+        self.started = None       # when it started (None once it is counted)
         self.done = 0             # frames that came out
         self.last = None          # seconds the latest one took
+        self.total = 0.0
 
     def frame(self, number, now: float) -> None:
         if number is None or number == self.current:
             return
-        if self.current is not None:
+        if self.movie and self.started is not None:
             self._close(now)
         self.current, self.started = number, now
-        if self.first_started is None:
-            self.first_started = now
 
     def saved(self, now: float) -> None:
-        self.last_saved = now
+        # A second "Saved:" for the same frame (stereo views) is not another frame.
+        if not self.movie and self.started is not None:
+            self._close(now)
 
     def finish(self, now: float) -> None:
-        if self.current is None:
-            return
-        end = self.last_saved if self.last_saved and self.last_saved >= self.started else now
-        self._close(end)
-        self.current = None
+        if self.movie and self.started is not None:
+            self._close(now)
+        self.current = self.started = None
 
     def _close(self, end: float) -> None:
-        self.last = round(max(0.0, end - self.started), 2)
-        self.last_end = end
+        took = max(0.0, end - self.started)
+        self.last = round(took, 2)
+        self.total += took
         self.done += 1
+        self.started = None
 
     @property
     def average(self):
-        if not self.done:
-            return None
-        return round((self.last_end - self.first_started) / self.done, 2)
+        return round(self.total / self.done, 2) if self.done else None
 
 
 # Extensions Blender can produce as a movie (FFmpeg containers + AVI).

@@ -350,6 +350,9 @@ def mode_overwrite():
     check("no outputs", not (j or {}).get("outputs"), (j or {}).get("outputs"))
     check("and it says why", "skipped" in str((j or {}).get("note") or "").lower(),
           (j or {}).get("note"))
+    p = (j or {}).get("progress") or {}
+    check("skipped frames are not timed as rendered ones",
+          not p.get("frames_done") and p.get("avg_frame_s") is None, p)
 
     print("== queueing with Overwrite renders them again")
     time.sleep(1.1)                      # so mtime can differ
@@ -426,6 +429,9 @@ def mode_size():
     check("Blender rendered 320x180", (ri.get("width"), ri.get("height")) == (320, 180), ri)
     log = req("GET", "/api/jobs/" + j["id"] + "/log?tail=400")["log"] if j else ""
     check("the log says why", "321x181 rendered as 320x180" in log)
+    p = (j or {}).get("progress") or {}
+    check("a movie's frames are timed too (no Saved: lines)",
+          p.get("frames_done") == 3 and (p.get("avg_frame_s") or 0) > 0, p)
     if outs:
         vs = video_size(outs[0])
         check("the file really is 320x180", vs in (None, (320, 180)), vs or "no ffmpeg: skipped")

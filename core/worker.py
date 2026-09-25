@@ -135,7 +135,7 @@ class RenderWorker:
             cmd = renderer.build_cmd(blender, job, scene_report, script_path)
             log_path = config.LOGS_DIR / f"job_{jid}.log"
             parser = renderer.ProgressParser(fstart, fend)
-            clock = renderer.FrameClock()
+            clock = renderer.FrameClock(movie=renderer.effective_is_movie(job, scene_report))
             outputs = []
 
             with open(log_path, "w", encoding="utf-8", errors="replace") as logf:
