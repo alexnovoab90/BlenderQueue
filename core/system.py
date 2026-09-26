@@ -78,6 +78,122 @@ def kill_process_tree(proc) -> None:
         pass
 
 
+_APP_JOB = None   # Windows job object that takes the renders down with BlendQueue
+
+
+def _windows_app_job():
+    """A job object with KILL_ON_JOB_CLOSE: when BlendQueue's process ends, however
+    it ends (closing its console window included), Windows kills what is inside."""
+    global _APP_JOB
+    if _APP_JOB is None:
+        import ctypes
+        from ctypes import wintypes
+
+        class BASIC(ctypes.Structure):
+            _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64),
+                        ("PerJobUserTimeLimit", ctypes.c_int64), ("LimitFlags", wintypes.DWORD),
+                        ("MinimumWorkingSetSize", ctypes.c_size_t),
+                        ("MaximumWorkingSetSize", ctypes.c_size_t),
+                        ("ActiveProcessLimit", wintypes.DWORD), ("Affinity", ctypes.c_size_t),
+                        ("PriorityClass", wintypes.DWORD), ("SchedulingClass", wintypes.DWORD)]
+
+        class EXTENDED(ctypes.Structure):
+            _fields_ = [("BasicLimitInformation", BASIC), ("IoInfo", ctypes.c_uint64 * 6),
+                        ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                        ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+        k32 = ctypes.windll.kernel32
+        k32.CreateJobObjectW.restype = wintypes.HANDLE
+        job = k32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        info = EXTENDED()
+        info.BasicLimitInformation.LimitFlags = 0x2000        # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not k32.SetInformationJobObject(wintypes.HANDLE(job), 9, ctypes.byref(info),
+                                           ctypes.sizeof(info)):
+            k32.CloseHandle(wintypes.HANDLE(job))
+            return None
+        _APP_JOB = job        # never closed: the handle dies with the process, on purpose
+    return _APP_JOB
+
+
+def bind_to_app(proc) -> bool:
+    """Makes a render die with BlendQueue even if BlendQueue is killed or its window
+    closed. Without it Blender keeps rendering orphaned, holding the GPU and its VRAM.
+    Windows only; on POSIX the next start kills the orphan (see process_birth)."""
+    if not IS_WINDOWS:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        job = _windows_app_job()
+        if not job:
+            return False
+        k32 = ctypes.windll.kernel32
+        k32.OpenProcess.restype = wintypes.HANDLE
+        handle = k32.OpenProcess(0x0100 | 0x0001, False, proc.pid)  # SET_QUOTA | TERMINATE
+        if not handle:
+            return False
+        try:
+            return bool(k32.AssignProcessToJobObject(wintypes.HANDLE(job), wintypes.HANDLE(handle)))
+        finally:
+            k32.CloseHandle(wintypes.HANDLE(handle))
+    except Exception:
+        return False
+
+
+def process_birth(pid) -> str | None:
+    """When a process started, as an opaque string, or None if it is gone.
+
+    A PID alone can be reused by another program; PID + birth identifies the
+    render that a previous BlendQueue left behind.
+    """
+    if not pid:
+        return None
+    try:
+        if IS_WINDOWS:
+            import ctypes
+            from ctypes import wintypes
+            k32 = ctypes.windll.kernel32
+            k32.OpenProcess.restype = wintypes.HANDLE
+            handle = k32.OpenProcess(0x1000, False, int(pid))   # QUERY_LIMITED_INFORMATION
+            if not handle:
+                return None
+            try:
+                code = wintypes.DWORD()
+                if k32.GetExitCodeProcess(wintypes.HANDLE(handle), ctypes.byref(code)) \
+                        and code.value != 259:                  # STILL_ACTIVE
+                    return None
+                times = [wintypes.FILETIME() for _ in range(4)]
+                if not k32.GetProcessTimes(wintypes.HANDLE(handle), *[ctypes.byref(t) for t in times]):
+                    return None
+                return f"{times[0].dwHighDateTime}:{times[0].dwLowDateTime}"
+            finally:
+                k32.CloseHandle(wintypes.HANDLE(handle))
+        if IS_LINUX:
+            with open(f"/proc/{int(pid)}/stat") as fh:
+                return fh.read().rsplit(")", 1)[1].split()[19]  # field 22: starttime
+        out = subprocess.run(["ps", "-o", "lstart=", "-p", str(int(pid))],
+                             capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() or None
+    except Exception:
+        return None
+
+
+def kill_pid_tree(pid) -> None:
+    """Kills a process (and its children) known only by its PID."""
+    try:
+        if IS_WINDOWS:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(int(pid))],
+                           capture_output=True, timeout=30, **popen_kwargs())
+            return
+        pgid = os.getpgid(int(pid))
+        os.killpg(pgid, signal.SIGKILL)
+    except Exception:
+        pass
+
+
 def _windows_tree(root_pid: int) -> list:
     """root_pid and every process it started, from a Toolhelp32 snapshot."""
     import ctypes

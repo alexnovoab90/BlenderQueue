@@ -32,7 +32,8 @@ def blender_errors(log_text: str) -> list:
     Only Blender's output counts: the log starts with the command line, whose
     generated Python mentions errors of its own.
     """
-    body = log_text.split("\n\n", 1)[1] if log_text.startswith("CMD:") else log_text
+    parts = re.split(r"\r?\n\r?\n", log_text, maxsplit=1) if log_text.startswith("CMD:") else []
+    body = parts[1] if len(parts) == 2 else log_text
     out = []
     for line in body.splitlines():
         m = ERROR_RE.search(line.strip())
@@ -41,6 +42,24 @@ def blender_errors(log_text: str) -> list:
         msg = (m.group(1) or m.group(2) or "").strip()
         if msg and not ERROR_NOISE_RE.search(msg) and msg not in out:
             out.append(msg)
+    return out
+
+
+def saved_frames(log_text: str) -> list:
+    """[(frame, path)] for every image the log confirms as written, in order.
+
+    The frame is the one Blender was rendering when it printed "Saved:", which
+    does not depend on how the output files are named. A render stopped midway
+    resumes after the last of these: an image without its "Saved:" line may be
+    half written.
+    """
+    parser = ProgressParser(0, 0)
+    out = []
+    for line in log_text.splitlines():
+        parser.feed(line)
+        m = SAVED_RE.search(line)
+        if m and parser.frame is not None:
+            out.append((parser.frame, m.group(1)))
     return out
 
 
@@ -474,13 +493,13 @@ class FrameClock:
     Blender exits.
     """
 
-    def __init__(self, movie: bool = False):
+    def __init__(self, movie: bool = False, done: int = 0, total: float = 0.0):
         self.movie = movie
         self.current = None       # frame being rendered
         self.started = None       # when it started (None once it is counted)
-        self.done = 0             # frames that came out
+        self.done = done          # frames that came out (earlier stretches of the job included)
         self.last = None          # seconds the latest one took
-        self.total = 0.0
+        self.total = total
 
     def frame(self, number, now: float) -> None:
         if number is None or number == self.current:

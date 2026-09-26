@@ -538,7 +538,7 @@ function renderQueue(st) {
   const jobs = st.jobs || [];
   const counts = { queued: 0, running: 0, done: 0, error: 0, canceled: 0, paused: 0 };
   jobs.forEach(j => {
-    if (j.status === "running" && j.paused_at) counts.paused++;
+    if (j.status === "paused" || (j.status === "running" && j.paused_at)) counts.paused++;
     else if (counts[j.status] != null) counts[j.status]++;
   });
   $("#queueSummary").textContent =
@@ -616,18 +616,28 @@ function renderInfoText(ri) {
 function progressText(j, pct) {
   const p = j.progress || {};
   const fr = j.frames || {};
-  if (j.status === "queued") return tf("queued · frames {a}–{b}", { a: fr.start, b: fr.end });
-  if (j.status === "running" && j.paused_at) {
+  if (j.status === "queued") {
+    const txt = tf("queued · frames {a}–{b}", { a: fr.start, b: fr.end });
+    if (j.resume_from != null) return txt + tf(" · continues at frame {f}", { f: j.resume_from });
+    if (j.interrupted) return txt + t(" · continues where it stopped");
+    return txt;
+  }
+  if (j.status === "paused" || (j.status === "running" && j.paused_at)) {
     let txt = tf("paused · frame {f} of {t} · {p}% · {e} rendered", {
       f: p.frame ?? "…", t: p.total_frames ?? (fr.end - fr.start + 1),
       p: pct, e: fmtDur(p.elapsed_s) });
     if (p.last_frame_s != null) txt += tf(" · last frame {s}", { s: fmtSecs(p.last_frame_s) });
+    if (j.status === "paused" && j.resume_from != null) {
+      txt += tf(" · continues at frame {f}", { f: j.resume_from });
+    }
     return txt;
   }
   if (j.status === "running") {
     let txt = tf("frame {f} of {t} · {p}% · {e} elapsed", {
       f: p.frame ?? "…", t: p.total_frames ?? (fr.end - fr.start + 1),
       p: pct, e: fmtDur(p.elapsed_s) });
+    if (j.resumed_from != null) txt += tf(" · resumed at frame {f}", { f: j.resumed_from });
+    if (j.note) txt += " · " + j.note;
     if (p.last_frame_s != null) txt += tf(" · last frame {s}", { s: fmtSecs(p.last_frame_s) });
     if (p.remaining_text) txt += tf(" · left {x}", { x: p.remaining_text });
     else if (p.eta_s != null) txt += tf(" · left ~{x}", { x: fmtDur(p.eta_s) });
@@ -672,6 +682,11 @@ function summarizeOverrides(ov) {
   return parts.join(" · ");
 }
 
+function resumeButton(j, title) {
+  return '<button class="btn sm primary" data-act="resume-job" data-id="' + j.id + '" title="' +
+    esc(title) + '">' + esc(t("▶ Resume")) + '</button>';
+}
+
 function jobCard(j) {
   const chipLabels = { queued: t("queued"), running: t("rendering"), done: t("done"),
                        error: t("error"), canceled: t("canceled") };
@@ -686,14 +701,22 @@ function jobCard(j) {
     acts.push('<button class="btn sm ghost" data-act="cancel" data-id="' + j.id + '">' + esc(t("Cancel")) + '</button>');
     acts.push('<button class="btn sm ghost danger" data-act="delete" data-id="' + j.id + '">✕</button>');
   } else if (j.status === "running") {
+    const movie = !!(fmtSpec(jobFormatId(j)) || {}).movie;
     acts.push(j.paused_at
-      ? '<button class="btn sm primary" data-act="resume-job" data-id="' + j.id + '" title="' +
-        esc(t("Continue the render exactly where it stopped")) + '">' + esc(t("▶ Resume")) + '</button>'
+      ? resumeButton(j, t("Continue the render exactly where it stopped"))
       : '<button class="btn sm ghost" data-act="pause-job" data-id="' + j.id + '" title="' +
-        esc(t("Freeze this render where it is. Blender keeps its memory, so resuming continues the same frame.")) +
+        esc(movie ? t("Freeze Blender where it is. A video cannot restart mid-file, so it keeps its memory while paused.")
+                  : t("Stop Blender and free the GPU, VRAM included. ▶ Resume continues after the last frame saved; the queue waits meanwhile.")) +
         '">' + esc(t("⏸ Pause")) + '</button>');
     acts.push('<button class="btn sm ghost" data-act="cancel" data-id="' + j.id + '">' + esc(t("Cancel")) + '</button>');
+  } else if (j.status === "paused") {
+    acts.push(resumeButton(j, t("Continue after the last frame saved")));
+    acts.push('<button class="btn sm ghost" data-act="cancel" data-id="' + j.id + '">' + esc(t("Cancel")) + '</button>');
+    acts.push('<button class="btn sm ghost danger" data-act="delete" data-id="' + j.id + '">✕</button>');
   } else {
+    if (j.status === "error" && j.interrupted) {
+      acts.push(resumeButton(j, t("Continue after the last frame saved")));
+    }
     if (j.status === "done") {
       acts.push('<button class="btn sm primary" data-act="open-folder" data-id="' + j.id + '" title="' + esc(t("Open the output folder in your file manager")) + '">' + esc(t("📂 Open folder")) + '</button>');
     }
@@ -708,7 +731,7 @@ function jobCard(j) {
   }
   acts.push('<button class="btn sm" data-act="details" data-id="' + j.id + '">' + esc(t("Details")) + '</button>');
 
-  const paused = j.status === "running" && !!j.paused_at;
+  const paused = j.status === "paused" || (j.status === "running" && !!j.paused_at);
   return '<div class="job ' + j.status + (paused ? ' paused' : '') + '" data-id="' + j.id + '">' +
     '<div class="job-head">' +
       '<span class="chip ' + (paused ? 'paused' : j.status) + '">' +

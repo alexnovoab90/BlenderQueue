@@ -166,11 +166,14 @@ const ES = {
   "⏸ Pause": "⏸ Pausar",
   "▶ Resume": "▶ Reanudar",
   "paused": "en pausa",
-  "Freeze this render where it is. Blender keeps its memory, so resuming continues the same frame.":
-    "Congela este render donde va. Blender conserva su memoria, así que al reanudar sigue en el mismo frame.",
+  "Stop Blender and free the GPU, VRAM included. ▶ Resume continues after the last frame saved; the queue waits meanwhile.":
+    "Cierra Blender y libera la GPU, VRAM incluida. ▶ Reanudar sigue después del último frame guardado; mientras tanto la cola espera.",
+  "Freeze Blender where it is. A video cannot restart mid-file, so it keeps its memory while paused.":
+    "Congela a Blender donde va. Un video no puede retomarse a mitad del archivo, así que en pausa conserva su memoria.",
   "Continue the render exactly where it stopped": "Seguir el render justo donde quedó",
-  "Stops starting new jobs; the render in progress keeps going. To freeze a render, use ⏸ Pause on its card.":
-    "Deja de empezar trabajos nuevos; el render en curso sigue. Para congelar un render usa ⏸ Pausar en su tarjeta.",
+  "Continue after the last frame saved": "Seguir después del último frame guardado",
+  "Stops starting new jobs; the render in progress keeps going. To pause a render, use ⏸ Pause on its card.":
+    "Deja de empezar trabajos nuevos; el render en curso sigue. Para pausar un render usa ⏸ Pausar en su tarjeta.",
   "In Blender: {what}": "En Blender: {what}",
   "The job is no longer in the queue": "El trabajo ya no está en la cola",
 
@@ -303,6 +306,11 @@ const ES = {
   " · last frame {s}": " · último frame {s}",
   "paused · frame {f} of {t} · {p}% · {e} rendered": "en pausa · frame {f} de {t} · {p}% · {e} renderizado",
   " · {n} paused": " · {n} en pausa",
+  " · continues at frame {f}": " · sigue en el frame {f}",
+  " · continues where it stopped": " · sigue donde quedó",
+  " · resumed at frame {f}": " · retomado en el frame {f}",
+  "A video cannot continue mid-file: it is rendered again from the start.":
+    "Un video no puede seguir a mitad del archivo: se renderiza de nuevo desde el inicio.",
   " · {s} per frame": " · {s} por frame",
   " · left {x}": " · resto {x}",
   " · left ~{x}": " · resto ~{x}",

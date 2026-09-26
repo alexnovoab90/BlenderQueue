@@ -42,7 +42,8 @@ together with its children, where Blender is installed and the roots of the file
 |---|---|---|---|
 | Queue, render, previews, scripts | yes | yes | yes |
 | Open the output folder | Explorer | `open` | `xdg-open` |
-| Pause a render in progress | process suspend | `SIGSTOP` / `SIGCONT` | `SIGSTOP` / `SIGCONT` |
+| Freeze a video render in place | process suspend | `SIGSTOP` / `SIGCONT` | `SIGSTOP` / `SIGCONT` |
+| Render dies with BlendQueue | job object | killed on the next start | killed on the next start |
 | Desktop notification | toast | `osascript` | `notify-send` |
 | Launcher | `run.bat` | `./run.sh` | `./run.sh` |
 
@@ -191,10 +192,15 @@ The bracketed parts only appear when that job needs them.
 - Blender reports some failures and still exits with code 0 — a video encoder that cannot start,
   for one. A job that wrote nothing ends in **error** with Blender's own message, unless the
   frames were skipped on purpose (see [Existing frames](#existing-frames)).
-- **⏸ Pause** on the job in progress freezes Blender where it is: the process is suspended and
-  keeps its memory (VRAM included), and **▶ Resume** continues the very same frame. Paused time
-  counts neither as render time nor toward the time per frame. **Pause queue** in the header is a
-  different thing: it only stops the next job from starting.
+- **⏸ Pause** on the job in progress closes Blender, which frees the GPU and its VRAM, and
+  **▶ Resume** starts it again right after the last frame saved; the queue waits meanwhile. A
+  video cannot restart mid-file, so a video job is frozen in place instead (the process is
+  suspended and keeps its memory). Paused time counts neither as render time nor toward the time
+  per frame. **Pause queue** in the header is a different thing: it only stops the next job from
+  starting.
+- **Closing BlendQueue does not lose a render.** Blender closes with it — even when its window is
+  closed abruptly — and the next time BlendQueue opens, the render continues on its own after the
+  last frame saved. A video starts over, for the same reason as above.
 - Cancelling kills Blender together with its child processes, paused or not; retry re-queues;
   ↑/↓ reorder the queue.
 - One render at a time — Blender already saturates the GPU/CPU.
@@ -243,8 +249,10 @@ Modes: `quick` (EEVEE sequence), `multi` (scene selection via `-S`), `cycles` (G
 `overwrite` (existing frames: preflight, skipping them, forcing the overwrite),
 `size` (size in pixels, odd video sizes, a render that writes nothing with exit code 0),
 `locate` (dropped files found on disk, uploaded copies swapped for their originals),
-`fs` (creating a folder from the picker), `pause` (pausing the render in progress, resuming it,
-cancelling it while paused), and `real "G:/path/file.blend" [render]` for one of your own files.
+`fs` (creating a folder from the picker), `pause` (a sequence stops and resumes after its last
+saved frame, a video is frozen in place), `interrupt` (BlendQueue killed mid-render and closed
+with ⏻, then reopened: it starts its own server), and `real "G:/path/file.blend" [render]` for
+one of your own files.
 
 To test while BlendQueue is busy rendering, start a second server on its own data folder so the
 tests never touch your queue:
@@ -265,8 +273,9 @@ BLENDQUEUE_URL=http://127.0.0.1:8790 .venv/bin/python tests/api_smoke.py size
 - **Port busy** → the launcher detects a running instance and just opens the browser.
 - **"This system cannot open a file manager" (Linux)** → install `xdg-utils`, or use the path
   shown in the job. Same idea for notifications: they need `notify-send` (`libnotify-bin`).
-- **Closing the server window stops the queue** → in-flight jobs are marked as interrupted and
-  can be retried. Prefer the ⏻ button in the header for a clean shutdown.
+- **Closing BlendQueue mid-render** → Blender closes with it and the render continues after its
+  last saved frame the next time BlendQueue opens. A job interrupted by an older version shows
+  **▶ Resume** instead.
 
 ## Security note
 

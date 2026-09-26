@@ -62,11 +62,16 @@ class Store:
         for job in self._data["jobs"]:
             st = job.get("status")
             if st == "running":
-                job["status"] = "error"
-                job["error"] = "Interrupted: the app was closed during the render."
-                job["finished_at"] = now()
+                # BlendQueue died mid-render (window closed, crash, reboot): back to
+                # the queue, to continue after the last frame its log says was
+                # saved. pid/pid_birth stay so the worker can kill an orphan first.
+                job["status"] = "queued"
+                job["interrupted"] = True
                 job["paused_at"] = None
-            elif st not in ("queued", "done", "error", "canceled"):
+            elif (st == "error" and not job.get("interrupted")
+                  and str(job.get("error") or "").startswith("Interrupted:")):
+                job["interrupted"] = True      # from older versions: offer ▶ Resume
+            elif st not in ("queued", "paused", "done", "error", "canceled"):
                 job["status"] = "queued"
         for f in self._data["files"]:
             if f.get("status") in ("inspecting", "pending"):
@@ -283,8 +288,10 @@ class Store:
             return True
 
     def next_queued_job(self):
+        """The next job to render: one that was already halfway goes first."""
         with self._lock:
-            for j in self._data["jobs"]:
-                if j.get("status") == "queued":
+            queued = [j for j in self._data["jobs"] if j.get("status") == "queued"]
+            for j in queued:
+                if j.get("resume_from") is not None or j.get("interrupted"):
                     return copy.deepcopy(j)
-        return None
+            return copy.deepcopy(queued[0]) if queued else None

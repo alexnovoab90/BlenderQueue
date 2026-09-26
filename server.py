@@ -108,6 +108,7 @@ def api_state():
         "log_tail": worker.tail(),
         "ffmpeg": bool(config.ffmpeg_path()),
         "platform": system.PLATFORM,
+        "server_pid": os.getpid(),   # lets the tests kill the server the hard way
         # The UI fetches the format catalog separately and only refetches it
         # when this key changes (another Blender version, another install).
         "formats_key": str(caps.get("blender_version") or "") + ":" + str(len(caps.get("file_format") or [])),
@@ -599,29 +600,30 @@ def api_job_cancel(jid: str):
 
 @app.post("/api/jobs/{jid}/pause")
 def api_job_pause(jid: str):
-    """Freezes the running render where it is (Blender keeps its memory)."""
+    """Pauses the render in progress: an image sequence stops (the GPU is freed and
+    it resumes after its last saved frame), a video is frozen in place."""
     job = store.get_job(jid)
     if not job:
         raise HTTPException(404, "Job not found")
+    if job.get("status") == "paused" or job.get("paused_at"):
+        return {"ok": True, "mode": None}
     if job.get("status") != "running":
         raise HTTPException(409, "Only the job that is rendering can be paused")
-    if job.get("paused_at"):
-        return {"ok": True, "paused": True}
-    if not worker.pause_job(jid):
+    mode = worker.pause_job(jid)
+    if not mode:
         raise HTTPException(409, "Could not pause the render")
-    return {"ok": True, "paused": True}
+    return {"ok": True, "mode": mode}
 
 
 @app.post("/api/jobs/{jid}/resume")
 def api_job_resume(jid: str):
+    """Continues a paused render, or one interrupted because BlendQueue was closed."""
     job = store.get_job(jid)
     if not job:
         raise HTTPException(404, "Job not found")
-    if not job.get("paused_at"):
-        return {"ok": True, "paused": False}
     if not worker.resume_job(jid):
-        raise HTTPException(409, "Could not resume the render")
-    return {"ok": True, "paused": False}
+        raise HTTPException(409, "This job is not paused")
+    return {"ok": True}
 
 
 @app.post("/api/jobs/{jid}/retry")
@@ -850,10 +852,11 @@ def api_queue_pause(body: PauseBody):
 
 @app.post("/api/shutdown")
 def api_shutdown():
-    """Stops the queue (kills the running render) and shuts the server down."""
+    """Shuts the server down. A render in progress is stopped, not cancelled: it
+    stays queued and continues after its last saved frame when BlendQueue opens."""
     try:
-        if worker and worker.current_job_id:
-            worker.cancel(worker.current_job_id)
+        if worker:
+            worker.stop_for_shutdown()
     except Exception:
         pass
 

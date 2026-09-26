@@ -42,7 +42,8 @@ matar un render con sus hijos, dónde está instalado Blender y las raíces del 
 |---|---|---|---|
 | Cola, render, previews, scripts | sí | sí | sí |
 | Abrir la carpeta de salida | Explorador | `open` | `xdg-open` |
-| Pausar un render en curso | suspensión del proceso | `SIGSTOP` / `SIGCONT` | `SIGSTOP` / `SIGCONT` |
+| Congelar un render de video | suspensión del proceso | `SIGSTOP` / `SIGCONT` | `SIGSTOP` / `SIGCONT` |
+| El render muere con BlendQueue | job object | se mata al volver a abrir | se mata al volver a abrir |
 | Notificación de escritorio | toast | `osascript` | `notify-send` |
 | Lanzador | `run.bat` | `./run.sh` | `./run.sh` |
 
@@ -204,10 +205,15 @@ Lo que va entre corchetes solo aparece cuando ese trabajo lo necesita.
   video que no arranca. Un trabajo que no escribió nada termina en **error** con el mensaje de
   Blender, salvo que los frames se hayan saltado a propósito (ver
   [Frames que ya existen](#frames-que-ya-existen)).
-- **⏸ Pausar** en el trabajo en curso congela a Blender donde va: el proceso queda suspendido y
-  conserva su memoria (VRAM incluida), y **▶ Reanudar** sigue en el mismo frame. El tiempo en
-  pausa no cuenta como tiempo de render ni para el tiempo por frame. **Pausar cola** en la
-  cabecera es otra cosa: solo evita que empiece el siguiente trabajo.
+- **⏸ Pausar** en el trabajo en curso cierra Blender, lo que libera la GPU y su VRAM, y
+  **▶ Reanudar** lo vuelve a lanzar justo después del último frame guardado; mientras tanto la
+  cola espera. Un video no puede retomarse a mitad del archivo, así que un trabajo de video se
+  congela donde va (el proceso queda suspendido y conserva su memoria). El tiempo en pausa no
+  cuenta como tiempo de render ni para el tiempo por frame. **Pausar cola** en la cabecera es
+  otra cosa: solo evita que empiece el siguiente trabajo.
+- **Cerrar BlendQueue no pierde el render.** Blender se cierra con él — aunque la ventana se
+  cierre de golpe — y la próxima vez que abras BlendQueue el render sigue solo después del último
+  frame guardado. Un video parte de nuevo, por lo mismo de arriba.
 - Cancelar mata Blender junto con sus procesos hijos, esté en pausa o no; reintentar vuelve a
   encolar; ↑/↓ reordenan.
 - Un solo render a la vez: Blender ya satura GPU/CPU.
@@ -256,9 +262,10 @@ Modos: `quick` (secuencia EEVEE), `multi` (selección de escena con `-S`), `cycl
 `overwrite` (frames existentes: preflight, saltarlos, forzar la sobrescritura),
 `size` (tamaño en píxeles, tamaños de video impares, un render que no escribe nada y sale con
 código 0), `locate` (archivos arrastrados encontrados en el disco, copias reemplazadas por su
-original), `fs` (crear una carpeta desde el selector), `pause` (pausar el render en curso,
-reanudarlo y cancelarlo en pausa) y `real "G:/ruta/archivo.blend" [render]` para uno de tus
-propios archivos.
+original), `fs` (crear una carpeta desde el selector), `pause` (una secuencia se detiene y sigue
+después de su último frame guardado; un video se congela), `interrupt` (BlendQueue matado a
+mitad de un render y cerrado con ⏻, y vuelto a abrir: levanta su propio servidor) y
+`real "G:/ruta/archivo.blend" [render]` para uno de tus propios archivos.
 
 Para probar mientras BlendQueue está renderizando, levanta un segundo servidor con su propia
 carpeta de datos; así las pruebas nunca tocan tu cola:
@@ -279,8 +286,9 @@ BLENDQUEUE_URL=http://127.0.0.1:8790 .venv/bin/python tests/api_smoke.py size
 - **Puerto ocupado** → el lanzador detecta si ya está corriendo y solo abre el navegador.
 - **«This system cannot open a file manager» (Linux)** → instala `xdg-utils`, o usa la ruta que
   muestra el trabajo. Igual con las notificaciones: necesitan `notify-send` (`libnotify-bin`).
-- **Cerrar la ventana del servidor detiene la cola** → los trabajos en curso quedan marcados como
-  interrumpidos y se pueden reintentar. Mejor usa el botón ⏻ de la cabecera.
+- **Cerrar BlendQueue a mitad de un render** → Blender se cierra con él y el render sigue después
+  de su último frame guardado la próxima vez que abras BlendQueue. Un trabajo interrumpido con
+  una versión anterior muestra **▶ Reanudar**.
 
 ## Nota de seguridad
 
