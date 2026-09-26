@@ -597,6 +597,33 @@ def api_job_cancel(jid: str):
     return {"ok": True}
 
 
+@app.post("/api/jobs/{jid}/pause")
+def api_job_pause(jid: str):
+    """Freezes the running render where it is (Blender keeps its memory)."""
+    job = store.get_job(jid)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if job.get("status") != "running":
+        raise HTTPException(409, "Only the job that is rendering can be paused")
+    if job.get("paused_at"):
+        return {"ok": True, "paused": True}
+    if not worker.pause_job(jid):
+        raise HTTPException(409, "Could not pause the render")
+    return {"ok": True, "paused": True}
+
+
+@app.post("/api/jobs/{jid}/resume")
+def api_job_resume(jid: str):
+    job = store.get_job(jid)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if not job.get("paused_at"):
+        return {"ok": True, "paused": False}
+    if not worker.resume_job(jid):
+        raise HTTPException(409, "Could not resume the render")
+    return {"ok": True, "paused": False}
+
+
 @app.post("/api/jobs/{jid}/retry")
 def api_job_retry(jid: str):
     if not store.get_job(jid):

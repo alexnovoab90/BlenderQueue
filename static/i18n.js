@@ -163,6 +163,14 @@ const ES = {
   "Queued jobs do not all write the same format. Use “Output format…” to unify them.":
     "Los trabajos en cola no escriben todos el mismo formato. Usa «Formato de salida…» para unificarlos.",
   "Queued: ": "Encolado: ",
+  "⏸ Pause": "⏸ Pausar",
+  "▶ Resume": "▶ Reanudar",
+  "paused": "en pausa",
+  "Freeze this render where it is. Blender keeps its memory, so resuming continues the same frame.":
+    "Congela este render donde va. Blender conserva su memoria, así que al reanudar sigue en el mismo frame.",
+  "Continue the render exactly where it stopped": "Seguir el render justo donde quedó",
+  "Stops starting new jobs; the render in progress keeps going. To freeze a render, use ⏸ Pause on its card.":
+    "Deja de empezar trabajos nuevos; el render en curso sigue. Para congelar un render usa ⏸ Pausar en su tarjeta.",
   "In Blender: {what}": "En Blender: {what}",
   "The job is no longer in the queue": "El trabajo ya no está en la cola",
 
@@ -293,6 +301,8 @@ const ES = {
   "queued · frames {a}–{b}": "en cola · frames {a}–{b}",
   "frame {f} of {t} · {p}% · {e} elapsed": "frame {f} de {t} · {p}% · {e} transcurrido",
   " · last frame {s}": " · último frame {s}",
+  "paused · frame {f} of {t} · {p}% · {e} rendered": "en pausa · frame {f} de {t} · {p}% · {e} renderizado",
+  " · {n} paused": " · {n} en pausa",
   " · {s} per frame": " · {s} por frame",
   " · left {x}": " · resto {x}",
   " · left ~{x}": " · resto ~{x}",

@@ -1,6 +1,6 @@
 @echo off
 rem BlendQueue smoke tests. The server must be running (run.bat).
-rem   tests\run_smoke.bat quick | multi | cycles | format | script | overwrite | size | locate | fs
+rem   tests\run_smoke.bat quick | multi | cycles | format | script | overwrite | size | locate | fs | pause
 rem   tests\run_smoke.bat real "G:/path/file.blend" [render]
 cd /d "%~dp0\.."
 if not exist "data\tests\quick.blend" (

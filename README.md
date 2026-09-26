@@ -42,11 +42,13 @@ together with its children, where Blender is installed and the roots of the file
 |---|---|---|---|
 | Queue, render, previews, scripts | yes | yes | yes |
 | Open the output folder | Explorer | `open` | `xdg-open` |
+| Pause a render in progress | process suspend | `SIGSTOP` / `SIGCONT` | `SIGSTOP` / `SIGCONT` |
 | Desktop notification | toast | `osascript` | `notify-send` |
 | Launcher | `run.bat` | `./run.sh` | `./run.sh` |
 
 **Verified on Windows 11** (full smoke suite) **and on Linux** (Ubuntu under WSL: browser roots,
-Blender lookup, killing a render with its children, and graceful degradation without a desktop).
+Blender lookup, killing a render with its children, pausing and resuming one, and graceful
+degradation without a desktop).
 **macOS is written but untested** — if you run it there, reports are welcome.
 
 Without a desktop session the two integration features return a clear message instead of failing,
@@ -189,8 +191,12 @@ The bracketed parts only appear when that job needs them.
 - Blender reports some failures and still exits with code 0 — a video encoder that cannot start,
   for one. A job that wrote nothing ends in **error** with Blender's own message, unless the
   frames were skipped on purpose (see [Existing frames](#existing-frames)).
-- Cancelling kills Blender together with its child processes; retry re-queues; ↑/↓ reorder the
-  queue.
+- **⏸ Pause** on the job in progress freezes Blender where it is: the process is suspended and
+  keeps its memory (VRAM included), and **▶ Resume** continues the very same frame. Paused time
+  counts neither as render time nor toward the time per frame. **Pause queue** in the header is a
+  different thing: it only stops the next job from starting.
+- Cancelling kills Blender together with its child processes, paused or not; retry re-queues;
+  ↑/↓ reorder the queue.
 - One render at a time — Blender already saturates the GPU/CPU.
 
 ## Project layout
@@ -237,8 +243,8 @@ Modes: `quick` (EEVEE sequence), `multi` (scene selection via `-S`), `cycles` (G
 `overwrite` (existing frames: preflight, skipping them, forcing the overwrite),
 `size` (size in pixels, odd video sizes, a render that writes nothing with exit code 0),
 `locate` (dropped files found on disk, uploaded copies swapped for their originals),
-`fs` (creating a folder from the picker), and `real "G:/path/file.blend" [render]` for one of
-your own files.
+`fs` (creating a folder from the picker), `pause` (pausing the render in progress, resuming it,
+cancelling it while paused), and `real "G:/path/file.blend" [render]` for one of your own files.
 
 To test while BlendQueue is busy rendering, start a second server on its own data folder so the
 tests never touch your queue:

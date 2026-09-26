@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BlendQueue — local render queue for Blender</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=12">
+  <link rel="stylesheet" href="/static/styles.css?v=13">
 </head>
 <body>
   <header class="topbar">
@@ -18,7 +18,8 @@
     </div>
     <div class="topbar-right">
       <span id="blenderBadge" class="badge">Blender: …</span>
-      <button id="btnPause" class="btn">Pause queue</button>
+      <button id="btnPause" class="btn" data-i18n-title
+        title="Stops starting new jobs; the render in progress keeps going. To freeze a render, use ⏸ Pause on its card.">Pause queue</button>
       <button id="btnScripts" class="btn ghost" data-i18n data-i18n-title title="Python script library">Scripts</button>
       <button id="btnSettings" class="btn ghost" data-i18n>Settings</button>
       <select id="langSel" class="input lang" data-i18n-title title="Interface language">
@@ -257,7 +258,7 @@
     </div>
   </div>
 
-  <script src="/static/i18n.js?v=12"></script>
-  <script src="/static/app.js?v=12"></script>
+  <script src="/static/i18n.js?v=13"></script>
+  <script src="/static/app.js?v=13"></script>
 </body>
 </html>

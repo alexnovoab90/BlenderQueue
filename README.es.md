@@ -42,11 +42,13 @@ matar un render con sus hijos, dónde está instalado Blender y las raíces del 
 |---|---|---|---|
 | Cola, render, previews, scripts | sí | sí | sí |
 | Abrir la carpeta de salida | Explorador | `open` | `xdg-open` |
+| Pausar un render en curso | suspensión del proceso | `SIGSTOP` / `SIGCONT` | `SIGSTOP` / `SIGCONT` |
 | Notificación de escritorio | toast | `osascript` | `notify-send` |
 | Lanzador | `run.bat` | `./run.sh` | `./run.sh` |
 
 **Verificado en Windows 11** (suite completa de humo) **y en Linux** (Ubuntu sobre WSL: raíces del
-explorador, búsqueda de Blender, matar un render con sus hijos y degradación sin escritorio).
+explorador, búsqueda de Blender, matar un render con sus hijos, pausarlo y reanudarlo, y
+degradación sin escritorio).
 **macOS está escrito pero sin probar** — si lo corres ahí, se agradece el reporte.
 
 Sin sesión de escritorio esas dos funciones devuelven un mensaje claro en vez de fallar, así que
@@ -202,7 +204,12 @@ Lo que va entre corchetes solo aparece cuando ese trabajo lo necesita.
   video que no arranca. Un trabajo que no escribió nada termina en **error** con el mensaje de
   Blender, salvo que los frames se hayan saltado a propósito (ver
   [Frames que ya existen](#frames-que-ya-existen)).
-- Cancelar mata Blender junto con sus procesos hijos; reintentar vuelve a encolar; ↑/↓ reordenan.
+- **⏸ Pausar** en el trabajo en curso congela a Blender donde va: el proceso queda suspendido y
+  conserva su memoria (VRAM incluida), y **▶ Reanudar** sigue en el mismo frame. El tiempo en
+  pausa no cuenta como tiempo de render ni para el tiempo por frame. **Pausar cola** en la
+  cabecera es otra cosa: solo evita que empiece el siguiente trabajo.
+- Cancelar mata Blender junto con sus procesos hijos, esté en pausa o no; reintentar vuelve a
+  encolar; ↑/↓ reordenan.
 - Un solo render a la vez: Blender ya satura GPU/CPU.
 
 ## Estructura
@@ -249,8 +256,9 @@ Modos: `quick` (secuencia EEVEE), `multi` (selección de escena con `-S`), `cycl
 `overwrite` (frames existentes: preflight, saltarlos, forzar la sobrescritura),
 `size` (tamaño en píxeles, tamaños de video impares, un render que no escribe nada y sale con
 código 0), `locate` (archivos arrastrados encontrados en el disco, copias reemplazadas por su
-original), `fs` (crear una carpeta desde el selector) y `real "G:/ruta/archivo.blend" [render]`
-para uno de tus propios archivos.
+original), `fs` (crear una carpeta desde el selector), `pause` (pausar el render en curso,
+reanudarlo y cancelarlo en pausa) y `real "G:/ruta/archivo.blend" [render]` para uno de tus
+propios archivos.
 
 Para probar mientras BlendQueue está renderizando, levanta un segundo servidor con su propia
 carpeta de datos; así las pruebas nunca tocan tu cola:

@@ -499,6 +499,11 @@ class FrameClock:
             self._close(now)
         self.current = self.started = None
 
+    def shift(self, seconds: float) -> None:
+        """A pause is not render time: the frame in progress started that much later."""
+        if self.started is not None:
+            self.started += seconds
+
     def _close(self, end: float) -> None:
         took = max(0.0, end - self.started)
         self.last = round(took, 2)

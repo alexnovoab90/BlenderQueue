@@ -20,6 +20,10 @@ class RenderWorker:
         self._lock = threading.RLock()
         self._proc = None
         self._cancel_ids: set = set()
+        # Pausing the running render (not the queue): see pause_job().
+        self._paused_since = None
+        self._paused_total = 0.0
+        self._clock = None
         self._thread = threading.Thread(target=self._loop, name="render-worker", daemon=True)
 
     def start(self) -> None:
@@ -48,6 +52,40 @@ class RenderWorker:
                     self._kill(self._proc)
         self.on_update()
 
+    def pause_job(self, job_id: str) -> bool:
+        """Freezes the running render where it is; resume_job() continues the same frame.
+
+        Blender is suspended, not stopped: it keeps its memory (VRAM too), so
+        nothing is lost or re-rendered. Pausing the queue is something else: it
+        only stops the next job from starting.
+        """
+        with self._lock:
+            if (self.current_job_id != job_id or self._proc is None
+                    or self._paused_since is not None):
+                return False
+            if not system.suspend_process_tree(self._proc):
+                return False
+            self._paused_since = time.time()
+        self.store.update_job(job_id, paused_at=self._paused_since)
+        self.on_update()
+        return True
+
+    def resume_job(self, job_id: str) -> bool:
+        with self._lock:
+            if (self.current_job_id != job_id or self._proc is None
+                    or self._paused_since is None):
+                return False
+            if not system.resume_process_tree(self._proc):
+                return False
+            gap = time.time() - self._paused_since
+            self._paused_since = None
+            self._paused_total += gap
+            if self._clock:
+                self._clock.shift(gap)      # the frame in progress did not take that long
+        self.store.update_job(job_id, paused_at=None, paused_s=round(self._paused_total, 1))
+        self.on_update()
+        return True
+
     def retry(self, job_id: str) -> bool:
         job = self.store.get_job(job_id)
         if not job or job.get("status") == "running":
@@ -55,7 +93,7 @@ class RenderWorker:
         self._cancel_ids.discard(job_id)
         self.store.update_job(job_id, status="queued", error=None, note=None, progress={},
                               outputs=[], preview={}, render_info=None, started_at=None,
-                              finished_at=None, duration_s=None)
+                              finished_at=None, duration_s=None, paused_at=None, paused_s=None)
         self.on_update()
         return True
 
@@ -74,7 +112,8 @@ class RenderWorker:
         system.kill_process_tree(proc)
 
     def status(self) -> dict:
-        return {"paused": self.paused, "current_job_id": self.current_job_id}
+        return {"paused": self.paused, "current_job_id": self.current_job_id,
+                "render_paused": self._paused_since is not None}
 
     def tail(self) -> list:
         return list(self.current_tail)
@@ -98,9 +137,10 @@ class RenderWorker:
         jid = job["id"]
         self.current_job_id = jid
         self.current_tail.clear()
+        self._paused_since, self._paused_total, self._clock = None, 0.0, None
         started = time.time()
         self.store.update_job(jid, status="running", started_at=started, error=None, note=None,
-                              render_info=None,
+                              render_info=None, paused_at=None, paused_s=None,
                               progress={"percent": 0.0, "frame": None, "message": "starting Blender…"})
         self.on_update()
         settings = self.store.settings()
@@ -136,6 +176,7 @@ class RenderWorker:
             log_path = config.LOGS_DIR / f"job_{jid}.log"
             parser = renderer.ProgressParser(fstart, fend)
             clock = renderer.FrameClock(movie=renderer.effective_is_movie(job, scene_report))
+            self._clock = clock
             outputs = []
 
             with open(log_path, "w", encoding="utf-8", errors="replace") as logf:
@@ -177,7 +218,7 @@ class RenderWorker:
 
             canceled = jid in self._cancel_ids
             self._cancel_ids.discard(jid)
-            duration = round(time.time() - started, 1)
+            duration = round(time.time() - started - self._paused_seconds(), 1)
 
             if canceled:
                 self.store.update_job(jid, status="canceled", finished_at=time.time(),
@@ -241,7 +282,13 @@ class RenderWorker:
             self.store.update_job(jid, status="error", finished_at=time.time(), error=str(exc))
             self._notify(settings, "Render failed", self._label(job) + " · " + str(exc))
         finally:
-            self.current_job_id = None
+            # A render cancelled while paused ends here too: never leave it marked paused.
+            with self._lock:
+                was_paused = self._paused_since is not None
+                self._paused_since, self._clock = None, None
+                self.current_job_id = None
+            if was_paused:
+                self.store.update_job(jid, paused_at=None)
             self.on_update()
 
     # ---------------- helpers ----------------
@@ -255,9 +302,15 @@ class RenderWorker:
             except Exception:
                 pass
 
+    def _paused_seconds(self) -> float:
+        """Time the current render spent paused, including a pause still going on."""
+        with self._lock:
+            ongoing = time.time() - self._paused_since if self._paused_since else 0.0
+            return self._paused_total + ongoing
+
     def _push_progress(self, jid: str, parser, started: float, fend: int, total: int,
                        clock=None) -> None:
-        elapsed = time.time() - started
+        elapsed = time.time() - started - self._paused_seconds()
         pct = parser.percent
         eta = None
         if 0.02 < pct < 1.0:

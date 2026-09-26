@@ -61,6 +61,7 @@ def kill_process_tree(proc) -> None:
             return                      # already gone
         try:
             os.killpg(pgid, signal.SIGTERM)
+            os.killpg(pgid, signal.SIGCONT)   # a paused render must wake up to die cleanly
             for _ in range(20):         # 2 s to shut down cleanly
                 if proc.poll() is not None:
                     return
@@ -75,6 +76,93 @@ def kill_process_tree(proc) -> None:
         proc.kill()                     # last resort on any platform
     except Exception:
         pass
+
+
+def _windows_tree(root_pid: int) -> list:
+    """root_pid and every process it started, from a Toolhelp32 snapshot."""
+    import ctypes
+    from ctypes import wintypes
+
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
+                    ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_size_t),
+                    ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+                    ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long),
+                    ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260)]
+
+    k32 = ctypes.windll.kernel32
+    k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    raw = k32.CreateToolhelp32Snapshot(0x00000002, 0)        # TH32CS_SNAPPROCESS
+    if not raw or raw == wintypes.HANDLE(-1).value:
+        return [root_pid]
+    snap = wintypes.HANDLE(raw)          # keep all 64 bits when passing it back
+    parents = {}
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(entry)
+        ok = k32.Process32FirstW(snap, ctypes.byref(entry))
+        while ok:
+            parents[entry.th32ProcessID] = entry.th32ParentProcessID
+            ok = k32.Process32NextW(snap, ctypes.byref(entry))
+    finally:
+        k32.CloseHandle(snap)
+    tree, todo = [root_pid], [root_pid]
+    while todo:
+        pid = todo.pop()
+        for child, parent in parents.items():
+            if parent == pid and child not in tree:
+                tree.append(child)
+                todo.append(child)
+    return tree
+
+
+def _windows_suspend(proc, resume: bool) -> bool:
+    import ctypes
+    from ctypes import wintypes
+    k32, ntdll = ctypes.windll.kernel32, ctypes.windll.ntdll
+    k32.OpenProcess.restype = wintypes.HANDLE
+    call = ntdll.NtResumeProcess if resume else ntdll.NtSuspendProcess
+    done = False
+    for pid in _windows_tree(proc.pid):
+        handle = k32.OpenProcess(0x0800, False, pid)          # PROCESS_SUSPEND_RESUME
+        if not handle:
+            continue
+        try:
+            done = call(wintypes.HANDLE(handle)) == 0 or done
+        finally:
+            k32.CloseHandle(wintypes.HANDLE(handle))
+    return done
+
+
+def suspend_process_tree(proc) -> bool:
+    """Freezes a render where it is (with its children) until resume_process_tree().
+
+    The process keeps its memory, VRAM included: resuming continues the very
+    same frame. Killing a suspended process works as usual.
+    """
+    if IS_WINDOWS:
+        try:
+            return _windows_suspend(proc, resume=False)
+        except Exception:
+            return False
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGSTOP)
+        return True
+    except (ProcessLookupError, OSError):
+        return False
+
+
+def resume_process_tree(proc) -> bool:
+    if IS_WINDOWS:
+        try:
+            return _windows_suspend(proc, resume=True)
+        except Exception:
+            return False
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGCONT)
+        return True
+    except (ProcessLookupError, OSError):
+        return False
 
 
 def open_folder(path) -> bool:

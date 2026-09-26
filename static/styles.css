@@ -437,3 +437,7 @@ textarea.code {
 .file-warn summary { cursor: pointer; color: var(--accent); }
 .file-warn ul { margin: 6px 0 0; padding-left: 18px; max-height: 180px; overflow: auto; word-break: break-all; }
 .job-rinfo { margin-top: 2px; }
+
+/* A render frozen with ⏸ Pause: Blender is suspended, the job is still running. */
+.chip.paused { color: #9fbfe8; border-color: #26364d; background: #101a28; }
+.job.paused .bar > div { background: #4a6fa5; }

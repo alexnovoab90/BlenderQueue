@@ -65,6 +65,7 @@ class Store:
                 job["status"] = "error"
                 job["error"] = "Interrupted: the app was closed during the render."
                 job["finished_at"] = now()
+                job["paused_at"] = None
             elif st not in ("queued", "done", "error", "canceled"):
                 job["status"] = "queued"
         for f in self._data["files"]:

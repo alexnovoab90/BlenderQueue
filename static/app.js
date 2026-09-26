@@ -536,11 +536,15 @@ function jobFormatText(j) {
 
 function renderQueue(st) {
   const jobs = st.jobs || [];
-  const counts = { queued: 0, running: 0, done: 0, error: 0, canceled: 0 };
-  jobs.forEach(j => { if (counts[j.status] != null) counts[j.status]++; });
+  const counts = { queued: 0, running: 0, done: 0, error: 0, canceled: 0, paused: 0 };
+  jobs.forEach(j => {
+    if (j.status === "running" && j.paused_at) counts.paused++;
+    else if (counts[j.status] != null) counts[j.status]++;
+  });
   $("#queueSummary").textContent =
     jobs.length ? tf("{q} queued · {r} rendering · {d} done",
-                     { q: counts.queued, r: counts.running, d: counts.done }) : "";
+                     { q: counts.queued, r: counts.running, d: counts.done }) +
+                  (counts.paused ? tf(" · {n} paused", { n: counts.paused }) : "") : "";
 
   const queued = jobs.filter(j => j.status === "queued");
   const distinct = [...new Set(queued.map(jobFormatId).filter(Boolean))];
@@ -556,8 +560,9 @@ function renderQueue(st) {
   $("#btnQueueScript").disabled = queued.length === 0;
 
   const el = $("#queueList");
-  const sig = jobs.map(j => j.id + ":" + j.status + ":" + JSON.stringify(j.overrides || {}) +
-    ":" + JSON.stringify(j.frames || {})).join("|") + "|" + (st.worker.current_job_id || "");
+  const sig = jobs.map(j => j.id + ":" + j.status + (j.paused_at ? ":paused" : "") + ":" +
+    JSON.stringify(j.overrides || {}) + ":" + JSON.stringify(j.frames || {})).join("|") +
+    "|" + (st.worker.current_job_id || "");
   if (sig !== queueSig) {
     queueSig = sig;
     el.innerHTML = jobs.map(jobCard).join("")
@@ -612,6 +617,13 @@ function progressText(j, pct) {
   const p = j.progress || {};
   const fr = j.frames || {};
   if (j.status === "queued") return tf("queued · frames {a}–{b}", { a: fr.start, b: fr.end });
+  if (j.status === "running" && j.paused_at) {
+    let txt = tf("paused · frame {f} of {t} · {p}% · {e} rendered", {
+      f: p.frame ?? "…", t: p.total_frames ?? (fr.end - fr.start + 1),
+      p: pct, e: fmtDur(p.elapsed_s) });
+    if (p.last_frame_s != null) txt += tf(" · last frame {s}", { s: fmtSecs(p.last_frame_s) });
+    return txt;
+  }
   if (j.status === "running") {
     let txt = tf("frame {f} of {t} · {p}% · {e} elapsed", {
       f: p.frame ?? "…", t: p.total_frames ?? (fr.end - fr.start + 1),
@@ -674,6 +686,12 @@ function jobCard(j) {
     acts.push('<button class="btn sm ghost" data-act="cancel" data-id="' + j.id + '">' + esc(t("Cancel")) + '</button>');
     acts.push('<button class="btn sm ghost danger" data-act="delete" data-id="' + j.id + '">✕</button>');
   } else if (j.status === "running") {
+    acts.push(j.paused_at
+      ? '<button class="btn sm primary" data-act="resume-job" data-id="' + j.id + '" title="' +
+        esc(t("Continue the render exactly where it stopped")) + '">' + esc(t("▶ Resume")) + '</button>'
+      : '<button class="btn sm ghost" data-act="pause-job" data-id="' + j.id + '" title="' +
+        esc(t("Freeze this render where it is. Blender keeps its memory, so resuming continues the same frame.")) +
+        '">' + esc(t("⏸ Pause")) + '</button>');
     acts.push('<button class="btn sm ghost" data-act="cancel" data-id="' + j.id + '">' + esc(t("Cancel")) + '</button>');
   } else {
     if (j.status === "done") {
@@ -690,9 +708,11 @@ function jobCard(j) {
   }
   acts.push('<button class="btn sm" data-act="details" data-id="' + j.id + '">' + esc(t("Details")) + '</button>');
 
-  return '<div class="job ' + j.status + '" data-id="' + j.id + '">' +
+  const paused = j.status === "running" && !!j.paused_at;
+  return '<div class="job ' + j.status + (paused ? ' paused' : '') + '" data-id="' + j.id + '">' +
     '<div class="job-head">' +
-      '<span class="chip ' + j.status + '">' + (chipLabels[j.status] || j.status) + '</span>' +
+      '<span class="chip ' + (paused ? 'paused' : j.status) + '">' +
+        (paused ? esc(t("paused")) : (chipLabels[j.status] || j.status)) + '</span>' +
       '<span class="job-title">' + esc(j.file_name) + ' <span class="muted">·</span> ' + esc(j.scene) + '</span>' +
       (scriptTxt ? '<span class="chip script" title="' +
         esc(t("Python script that runs before rendering")) + '">⚙ ' +
@@ -983,6 +1003,8 @@ document.addEventListener("click", async (e) => {
     else if (act === "move-up") await api("/api/jobs/" + btn.dataset.id + "/move", { method: "POST", body: JSON.stringify({ direction: -1 }) });
     else if (act === "move-down") await api("/api/jobs/" + btn.dataset.id + "/move", { method: "POST", body: JSON.stringify({ direction: 1 }) });
     else if (act === "cancel") await api("/api/jobs/" + btn.dataset.id + "/cancel", { method: "POST" });
+    else if (act === "pause-job") await api("/api/jobs/" + btn.dataset.id + "/pause", { method: "POST" });
+    else if (act === "resume-job") await api("/api/jobs/" + btn.dataset.id + "/resume", { method: "POST" });
     else if (act === "retry") await api("/api/jobs/" + btn.dataset.id + "/retry", { method: "POST" });
     else if (act === "delete") await api("/api/jobs/" + btn.dataset.id, { method: "DELETE" });
     else if (act === "open-folder") await api("/api/jobs/" + btn.dataset.id + "/open", { method: "POST" });
